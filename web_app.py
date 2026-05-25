@@ -59,6 +59,10 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(200, {"status": "ok", "store": STORE.backend_name})
                 return
 
+            if path == "/api/config":
+                self.send_json(200, {"config": STORE.config_state()})
+                return
+
             if len(parts) == 4 and parts[:2] == ["api", "rooms"] and parts[3] == "state":
                 self.handle_room_state(parts[2])
                 return

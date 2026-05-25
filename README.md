@@ -34,6 +34,7 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 - Offline JSON save/load for terminal players
 - Online Redis-backed profiles, balances, room pots, rewards, achievements, and leagues
 - Fixed 50,000 starting coins for online players
+- One-time migration for older low-balance online profiles that were created before the 50,000 starting balance change
 - Staked multiplayer rooms with forfeits and pot payouts
 - Pause/save and resume with a private save code
 - Public friend codes for adding other players without sharing resume access

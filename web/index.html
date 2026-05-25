@@ -29,8 +29,8 @@
                 <input id="create-name" type="text" maxlength="24" value="Player">
               </label>
               <label>
-                Stake
-                <input id="create-stake" type="number" min="100" max="5000" value="500">
+                Room Stake
+                <input id="create-stake" type="number" min="100" max="5000" step="100" value="500" autocomplete="off">
               </label>
               <button type="submit">Create Room</button>
             </form>
@@ -57,6 +57,8 @@
           </div>
 
           <div class="profile-strip">
+            <span>Coins</span>
+            <strong id="current-balance-value">50,000 starting coins</strong>
             <span>Save Code</span>
             <strong id="save-code-value">Create or resume a profile</strong>
             <span>Friend Code</span>

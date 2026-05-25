@@ -9,6 +9,7 @@ from online_store import (
     DAILY_REWARD,
     FIRST_AWAY_REWARD_COINS,
     FIRST_AWAY_REWARD_FREE_SPINS,
+    LEGACY_STARTING_COINS,
     LEAVE_PENALTY,
     ROOM_VICTORY_BONUS,
     RETURN_AWAY_REWARD_COINS,
@@ -139,6 +140,19 @@ class SlotMachineTests(unittest.TestCase):
         self.assertEqual(state["room"]["stake"], 500)
         self.assertEqual(code, state["roomCode"])
         self.assertEqual(player_id, state["viewerId"])
+
+    def test_legacy_low_balance_profiles_are_migrated_to_new_starting_coins(self):
+        backend = MemoryBackend()
+        store = OnlineStore(backend=backend)
+        profile = store.create_profile("Ada")
+        profile.pop("starting_coins")
+        profile["balance"] = LEGACY_STARTING_COINS
+        backend.save_profile(profile)
+
+        migrated = store.ensure_profile(profile["id"], "Ada")
+
+        self.assertEqual(migrated["balance"], STARTING_COINS)
+        self.assertEqual(migrated["starting_coins"], STARTING_COINS)
 
     def test_profile_can_pause_and_resume_by_save_code(self):
         store = OnlineStore(backend=MemoryBackend())

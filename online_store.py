@@ -12,6 +12,8 @@ from slot_machine import SlotMachine
 
 
 STARTING_COINS = 50000
+LEGACY_STARTING_COINS = 5000
+LEGACY_PROFILE_MIGRATION_THRESHOLD = 10000
 DEFAULT_ROOM_STAKE = 500
 MIN_ROOM_STAKE = 100
 MAX_ROOM_STAKE = 5000
@@ -287,6 +289,7 @@ class OnlineStore:
             "friend_code": self.generate_friend_code(),
             "name": self.clean_name(name),
             "balance": STARTING_COINS,
+            "starting_coins": STARTING_COINS,
             "free_spins": 0,
             "stats": asdict(GameStats()),
             "history": [],
@@ -691,23 +694,26 @@ class OnlineStore:
             "achievements": list(ACHIEVEMENTS.values()),
             "events": list(reversed(room["events"])),
             "chat": list(room.get("chat", []))[-50:],
-            "config": {
-                "startingCoins": STARTING_COINS,
-                "awayRewardDays": AWAY_REWARD_DAYS,
-                "firstAwayRewardCoins": FIRST_AWAY_REWARD_COINS,
-                "firstAwayRewardFreeSpins": FIRST_AWAY_REWARD_FREE_SPINS,
-                "returnAwayRewardCoins": RETURN_AWAY_REWARD_COINS,
-                "returnAwayRewardFreeSpins": RETURN_AWAY_REWARD_FREE_SPINS,
-                "defaultStake": DEFAULT_ROOM_STAKE,
-                "minStake": MIN_ROOM_STAKE,
-                "maxStake": MAX_ROOM_STAKE,
-                "leavePenalty": LEAVE_PENALTY,
-                "dailyReward": DAILY_REWARD,
-                "victoryBonus": ROOM_VICTORY_BONUS,
-                "minBet": self.slot_game.slot_machine.min_bet,
-                "maxBet": self.slot_game.slot_machine.max_bet,
-                "maxPaylines": self.slot_game.slot_machine.max_paylines,
-            },
+            "config": self.config_state(),
+        }
+
+    def config_state(self):
+        return {
+            "startingCoins": STARTING_COINS,
+            "awayRewardDays": AWAY_REWARD_DAYS,
+            "firstAwayRewardCoins": FIRST_AWAY_REWARD_COINS,
+            "firstAwayRewardFreeSpins": FIRST_AWAY_REWARD_FREE_SPINS,
+            "returnAwayRewardCoins": RETURN_AWAY_REWARD_COINS,
+            "returnAwayRewardFreeSpins": RETURN_AWAY_REWARD_FREE_SPINS,
+            "defaultStake": DEFAULT_ROOM_STAKE,
+            "minStake": MIN_ROOM_STAKE,
+            "maxStake": MAX_ROOM_STAKE,
+            "leavePenalty": LEAVE_PENALTY,
+            "dailyReward": DAILY_REWARD,
+            "victoryBonus": ROOM_VICTORY_BONUS,
+            "minBet": self.slot_game.slot_machine.min_bet,
+            "maxBet": self.slot_game.slot_machine.max_bet,
+            "maxPaylines": self.slot_game.slot_machine.max_paylines,
         }
 
     def profile_state(self, profile, room=None, include_save_code=False, include_player_id=False):
@@ -862,6 +868,7 @@ class OnlineStore:
             profile["save_code"] = self.generate_save_code()
         if not profile.get("friend_code"):
             profile["friend_code"] = self.generate_friend_code()
+        self.normalize_starting_coins(profile)
         profile.setdefault("paused", False)
         profile.setdefault("current_room_code", None)
         profile.setdefault("last_seen_at", profile.get("updated_at") or iso_now())
@@ -878,6 +885,21 @@ class OnlineStore:
         profile.setdefault("losses", 0)
         profile.setdefault("forfeits", 0)
         profile.setdefault("stats", asdict(GameStats()))
+
+    @staticmethod
+    def normalize_starting_coins(profile):
+        recorded_starting_coins = int(profile.get("starting_coins") or 0)
+        if recorded_starting_coins >= STARTING_COINS:
+            profile["starting_coins"] = STARTING_COINS
+            return
+
+        balance = int(profile.get("balance", 0))
+        if recorded_starting_coins:
+            profile["balance"] = balance + (STARTING_COINS - recorded_starting_coins)
+        elif balance <= LEGACY_PROFILE_MIGRATION_THRESHOLD:
+            profile["balance"] = balance + (STARTING_COINS - LEGACY_STARTING_COINS)
+
+        profile["starting_coins"] = STARTING_COINS
 
     @staticmethod
     def add_event(room, message):

@@ -10,6 +10,7 @@ const ui = {
   resumeForm: $("resume-form"),
   resumeCode: $("resume-code"),
   roomCode: $("room-code"),
+  currentBalanceValue: $("current-balance-value"),
   saveCodeValue: $("save-code-value"),
   friendCodeValue: $("friend-code-value"),
   playerSummary: $("player-summary"),
@@ -80,6 +81,11 @@ let audioContext;
 let musicTimer;
 let musicEnabled = false;
 let soundEnabled = true;
+const coinFormat = new Intl.NumberFormat("en-US");
+
+function formatCoins(value) {
+  return `${coinFormat.format(Number(value) || 0)} coins`;
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -220,17 +226,7 @@ function renderState(state) {
   ui.finishButton.disabled = !you || room.status === "completed" || !room.playerCount;
 
   if (state.config) {
-    ui.lines.max = state.config.maxPaylines;
-    ui.bet.min = state.config.minBet;
-    ui.bet.max = state.config.maxBet;
-    ui.createStake.min = state.config.minStake;
-    ui.createStake.max = state.config.maxStake;
-    if (Number(ui.lines.value) > state.config.maxPaylines) {
-      ui.lines.value = state.config.maxPaylines;
-    }
-    if (Number(ui.bet.value) > state.config.maxBet) {
-      ui.bet.value = state.config.maxBet;
-    }
+    applyConfig(state.config);
   }
 
   if (you) {
@@ -242,7 +238,8 @@ function renderState(state) {
     if (you.friendCode) {
       ui.friendCodeValue.textContent = you.friendCode;
     }
-    ui.playerSummary.textContent = `${you.name} | ${you.balance} coins | ${you.league.name} league | pot ${room.pot || 0} | stake ${room.stake || 0}`;
+    ui.currentBalanceValue.textContent = formatCoins(you.balance);
+    ui.playerSummary.textContent = `${you.name} | ${formatCoins(you.balance)} | ${you.league.name} league | pot ${coinFormat.format(room.pot || 0)} | stake ${coinFormat.format(room.stake || 0)}`;
     renderStats(you);
     renderFriends(you.friends || []);
   }
@@ -251,6 +248,40 @@ function renderState(state) {
   renderRankGifts(state.rankGifts || []);
   renderEvents(state.events || []);
   renderChat(state.chat || []);
+}
+
+function applyConfig(config) {
+  ui.lines.max = config.maxPaylines;
+  ui.bet.min = config.minBet;
+  ui.bet.max = config.maxBet;
+  ui.createStake.min = config.minStake;
+  ui.createStake.max = config.maxStake;
+
+  const stake = Number(ui.createStake.value);
+  if (!stake || stake < config.minStake || stake > config.maxStake) {
+    ui.createStake.value = config.defaultStake;
+  }
+  if (Number(ui.lines.value) > config.maxPaylines) {
+    ui.lines.value = config.maxPaylines;
+  }
+  if (Number(ui.bet.value) > config.maxBet) {
+    ui.bet.value = config.maxBet;
+  }
+  if (!session.playerId) {
+    ui.currentBalanceValue.textContent = `${coinFormat.format(config.startingCoins)} starting coins`;
+    ui.playerSummary.textContent = `No active profile | ${formatCoins(config.startingCoins)} starting balance`;
+  }
+}
+
+async function loadAppConfig() {
+  try {
+    const data = await api("/api/config");
+    applyConfig(data.config);
+  } catch (error) {
+    if (!session.playerId) {
+      ui.playerSummary.textContent = "No active profile | 50,000 starting balance";
+    }
+  }
 }
 
 function renderLeaderboard(players) {
@@ -706,9 +737,10 @@ ui.resumeForm.addEventListener("submit", async (event) => {
       renderState(data.state);
     } else {
       renderStats(data.profile);
+      ui.currentBalanceValue.textContent = formatCoins(data.profile.balance);
       ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
       renderFriends(data.profile.friends || []);
-      ui.playerSummary.textContent = `${data.profile.name} | ${data.profile.balance} coins | ${data.profile.league.name} league`;
+      ui.playerSummary.textContent = `${data.profile.name} | ${formatCoins(data.profile.balance)} | ${data.profile.league.name} league`;
     }
     startPolling();
     ui.result.textContent = data.reward
@@ -751,6 +783,7 @@ ui.pauseButton.addEventListener("click", async () => {
     });
     saveProfileSession(data.profile.id, data.profile.saveCode);
     renderStats(data.profile);
+    ui.currentBalanceValue.textContent = formatCoins(data.profile.balance);
     ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
     renderFriends(data.profile.friends || []);
     ui.result.textContent = `Paused and saved. Resume with ${data.profile.saveCode}.`;
@@ -908,4 +941,5 @@ if (session.saveCode) {
 if (location.port === "5500") {
   ui.result.textContent = apiServerMessage();
 }
+loadAppConfig();
 startPolling();
