@@ -96,6 +96,14 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
                 self.handle_daily_reward()
                 return
 
+            if path == "/api/profile/resume":
+                self.handle_resume_profile()
+                return
+
+            if path == "/api/profile/pause":
+                self.handle_pause_profile()
+                return
+
             self.send_json(404, {"error": "Not found"})
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
@@ -147,6 +155,19 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
         name = str(data.get("name", "Player")).strip() or "Player"
         reward = STORE.claim_daily_reward(player_id, name)
         self.send_json(200, {"reward": reward})
+
+    def handle_resume_profile(self):
+        data = self.read_json()
+        save_code = str(data.get("saveCode", "")).strip()
+        name = str(data.get("name", "")).strip() or None
+        resumed = STORE.resume_profile(save_code, name)
+        self.send_json(200, resumed)
+
+    def handle_pause_profile(self):
+        data = self.read_json()
+        player_id = str(data.get("playerId", "")).strip()
+        profile = STORE.pause_profile(player_id)
+        self.send_json(200, {"profile": profile})
 
     def handle_room_state(self, code):
         query = parse_qs(urlparse(self.path).query)

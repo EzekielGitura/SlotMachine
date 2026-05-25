@@ -9,7 +9,7 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 3. Move online player balances and rooms into `online_store.py`.
 4. Use Redis for web persistence when `REDIS_URL` is set.
 5. Fall back to memory for local development and tests when Redis is unavailable.
-6. Give every online player a fixed starting balance of 10,000 coins.
+6. Give every online player a fixed starting balance of 50,000 coins.
 7. Deduct a fixed room stake when players create or join a room.
 8. Hold all room stakes in a shared pot.
 9. Track room score separately from global coin balance.
@@ -17,6 +17,8 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 11. Treat mid-room leaving as a forfeit and deduct a leave penalty.
 12. Award daily rewards, achievements, rank gifts, and league points through the online store.
 13. Render room state, leaderboard, gifts, achievements, and league status in the browser UI.
+14. Let players pause/save and resume later with a private save code.
+15. Award welcome-back rewards after 7+ days away.
 
 ## Features
 
@@ -29,8 +31,11 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 - Near-miss messages
 - Offline JSON save/load for terminal players
 - Online Redis-backed profiles, balances, room pots, rewards, achievements, and leagues
-- Fixed 10,000 starting coins for online players
+- Fixed 50,000 starting coins for online players
 - Staked multiplayer rooms with forfeits and pot payouts
+- Pause/save and resume with a private save code
+- First 7+ day welcome-back reward: 25,000 coins and 7 free spins
+- Later 7+ day return rewards: 250 coins and 2 free spins
 - Rank 1-5 cosmetic gifts shown on the leaderboard
 - Burgundy-led responsive browser theme with sage, teal, ivory, and gold accents
 

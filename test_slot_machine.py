@@ -1,13 +1,18 @@
 import random
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from game import Player, SlotGame
 from online_store import (
     DAILY_REWARD,
+    FIRST_AWAY_REWARD_COINS,
+    FIRST_AWAY_REWARD_FREE_SPINS,
     LEAVE_PENALTY,
     ROOM_VICTORY_BONUS,
+    RETURN_AWAY_REWARD_COINS,
+    RETURN_AWAY_REWARD_FREE_SPINS,
     RANK_GIFTS,
     STARTING_COINS,
     MemoryBackend,
@@ -135,6 +140,52 @@ class SlotMachineTests(unittest.TestCase):
         self.assertEqual(code, state["roomCode"])
         self.assertEqual(player_id, state["viewerId"])
 
+    def test_profile_can_pause_and_resume_by_save_code(self):
+        store = OnlineStore(backend=MemoryBackend())
+        code, player_id, state = store.create_room("Ada", stake=500)
+        save_code = state["you"]["saveCode"]
+
+        paused = store.pause_profile(player_id)
+        resumed = store.resume_profile(save_code)
+
+        self.assertTrue(paused["paused"])
+        self.assertEqual(resumed["playerId"], player_id)
+        self.assertEqual(resumed["roomCode"], code)
+        self.assertEqual(resumed["state"]["roomCode"], code)
+
+    def test_first_away_resume_reward_is_large_bonus(self):
+        backend = MemoryBackend()
+        store = OnlineStore(backend=backend)
+        profile = store.create_profile("Ada")
+        profile["last_seen_at"] = (
+            datetime.now(timezone.utc) - timedelta(days=7, minutes=1)
+        ).isoformat(timespec="seconds")
+        backend.save_profile(profile)
+
+        resumed = store.resume_profile(profile["save_code"])
+
+        self.assertEqual(resumed["reward"]["coins"], FIRST_AWAY_REWARD_COINS)
+        self.assertEqual(resumed["reward"]["freeSpins"], FIRST_AWAY_REWARD_FREE_SPINS)
+        self.assertEqual(resumed["profile"]["balance"], STARTING_COINS + FIRST_AWAY_REWARD_COINS)
+        self.assertEqual(resumed["profile"]["freeSpins"], FIRST_AWAY_REWARD_FREE_SPINS)
+
+    def test_subsequent_away_resume_reward_is_smaller(self):
+        backend = MemoryBackend()
+        store = OnlineStore(backend=backend)
+        profile = store.create_profile("Ada")
+        profile["away_reward_count"] = 1
+        profile["last_seen_at"] = (
+            datetime.now(timezone.utc) - timedelta(days=8)
+        ).isoformat(timespec="seconds")
+        backend.save_profile(profile)
+
+        resumed = store.resume_profile(profile["save_code"])
+
+        self.assertEqual(resumed["reward"]["coins"], RETURN_AWAY_REWARD_COINS)
+        self.assertEqual(resumed["reward"]["freeSpins"], RETURN_AWAY_REWARD_FREE_SPINS)
+        self.assertEqual(resumed["profile"]["balance"], STARTING_COINS + RETURN_AWAY_REWARD_COINS)
+        self.assertEqual(resumed["profile"]["freeSpins"], RETURN_AWAY_REWARD_FREE_SPINS)
+
     def test_joining_room_deducts_same_stake_and_updates_pot(self):
         store = OnlineStore(backend=MemoryBackend())
         code, _, _ = store.create_room("Ada", stake=500)
@@ -163,7 +214,7 @@ class SlotMachineTests(unittest.TestCase):
 
         state = store.finish_room(code, ada_id)
 
-        winner = next(player for player in state["players"] if player["id"] == ada_id)
+        winner = next(player for player in state["players"] if player["isWinner"])
         self.assertEqual(state["room"]["status"], "completed")
         self.assertEqual(state["room"]["pot"], 0)
         self.assertEqual(winner["balance"], STARTING_COINS - 500 + 1000 + ROOM_VICTORY_BONUS + 1500)

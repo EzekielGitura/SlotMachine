@@ -186,6 +186,36 @@ label {
   align-items: end;
 }
 
+.resume-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+}
+
+.profile-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  border: 1px solid #ead8ca;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fffdf9;
+}
+
+.profile-strip span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.profile-strip strong {
+  min-width: 0;
+  color: var(--burgundy-800);
+  overflow-wrap: anywhere;
+}
+
 .reels {
   display: grid;
   grid-template-columns: repeat(3, minmax(82px, 1fr));
@@ -237,7 +267,7 @@ label {
 }
 
 .room-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .result-strip {

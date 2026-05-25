@@ -45,6 +45,19 @@
               </label>
               <button type="submit">Join Room</button>
             </form>
+
+            <form id="resume-form" class="control-group resume-group">
+              <label>
+                Save Code
+                <input id="resume-code" type="text" maxlength="14" autocomplete="off" placeholder="ABCD-EFGH-IJKL">
+              </label>
+              <button type="submit">Resume</button>
+            </form>
+          </div>
+
+          <div class="profile-strip">
+            <span>Save Code</span>
+            <strong id="save-code-value">Create or resume a profile</strong>
           </div>
 
           <div id="reels" class="reels" aria-live="polite"></div>
@@ -63,6 +76,7 @@
 
           <div class="room-actions">
             <button id="daily-button" type="button" disabled>Claim Daily</button>
+            <button id="pause-button" type="button" disabled>Pause & Save</button>
             <button id="leave-button" type="button" disabled>Leave Room</button>
             <button id="finish-button" type="button" disabled>End Room</button>
           </div>

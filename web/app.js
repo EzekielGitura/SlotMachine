@@ -7,12 +7,16 @@ const ui = {
   joinForm: $("join-form"),
   joinName: $("join-name"),
   joinCode: $("join-code"),
+  resumeForm: $("resume-form"),
+  resumeCode: $("resume-code"),
   roomCode: $("room-code"),
+  saveCodeValue: $("save-code-value"),
   playerSummary: $("player-summary"),
   reels: $("reels"),
   spinForm: $("spin-form"),
   spinButton: $("spin-button"),
   dailyButton: $("daily-button"),
+  pauseButton: $("pause-button"),
   leaveButton: $("leave-button"),
   finishButton: $("finish-button"),
   lines: $("lines"),
@@ -27,6 +31,7 @@ const ui = {
 const session = {
   roomCode: localStorage.getItem("slotRoomCode"),
   playerId: localStorage.getItem("slotPlayerId"),
+  saveCode: localStorage.getItem("slotSaveCode"),
   pollTimer: null,
 };
 
@@ -181,6 +186,7 @@ function renderState(state) {
   ui.roomCode.textContent = state.roomCode || "------";
   ui.spinButton.disabled = !you || room.status === "completed" || you.forfeited;
   ui.dailyButton.disabled = !you || !you.dailyAvailable;
+  ui.pauseButton.disabled = !you;
   ui.leaveButton.disabled = !you || room.status === "completed" || you.forfeited;
   ui.finishButton.disabled = !you || room.status === "completed" || !room.playerCount;
 
@@ -199,6 +205,11 @@ function renderState(state) {
   }
 
   if (you) {
+    if (you.saveCode) {
+      session.saveCode = you.saveCode;
+      localStorage.setItem("slotSaveCode", you.saveCode);
+      ui.saveCodeValue.textContent = you.saveCode;
+    }
     ui.playerSummary.textContent = `${you.name} | ${you.balance} coins | ${you.league.name} league | pot ${room.pot || 0} | stake ${room.stake || 0}`;
     renderStats(you);
   }
@@ -334,6 +345,16 @@ function saveSession(roomCode, playerId) {
   localStorage.setItem("slotPlayerId", playerId);
 }
 
+function saveProfileSession(playerId, saveCode) {
+  session.playerId = playerId;
+  localStorage.setItem("slotPlayerId", playerId);
+  if (saveCode) {
+    session.saveCode = saveCode;
+    localStorage.setItem("slotSaveCode", saveCode);
+    ui.saveCodeValue.textContent = saveCode;
+  }
+}
+
 function startPolling() {
   clearInterval(session.pollTimer);
   if (!session.roomCode || !session.playerId) {
@@ -400,6 +421,36 @@ ui.joinForm.addEventListener("submit", async (event) => {
   }
 });
 
+ui.resumeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await api("/api/profile/resume", {
+      method: "POST",
+      body: JSON.stringify({
+        saveCode: ui.resumeCode.value,
+        name: ui.createName.value || ui.joinName.value,
+      }),
+    });
+    saveProfileSession(data.playerId, data.profile.saveCode);
+    if (data.roomCode) {
+      session.roomCode = data.roomCode;
+      localStorage.setItem("slotRoomCode", data.roomCode);
+    }
+    if (data.state) {
+      renderState(data.state);
+    } else {
+      renderStats(data.profile);
+      ui.playerSummary.textContent = `${data.profile.name} | ${data.profile.balance} coins | ${data.profile.league.name} league`;
+    }
+    startPolling();
+    ui.result.textContent = data.reward
+      ? `${data.reward.name}: +${data.reward.coins} coins and +${data.reward.freeSpins} free spins`
+      : "Profile resumed.";
+  } catch (error) {
+    ui.result.textContent = error.message;
+  }
+});
+
 ui.dailyButton.addEventListener("click", async () => {
   if (!session.playerId) {
     return;
@@ -415,6 +466,24 @@ ui.dailyButton.addEventListener("click", async () => {
     });
     ui.result.textContent = `Daily reward claimed: +${data.reward.amount} coins`;
     refreshState();
+  } catch (error) {
+    ui.result.textContent = error.message;
+  }
+});
+
+ui.pauseButton.addEventListener("click", async () => {
+  if (!session.playerId) {
+    return;
+  }
+
+  try {
+    const data = await api("/api/profile/pause", {
+      method: "POST",
+      body: JSON.stringify({ playerId: session.playerId }),
+    });
+    saveProfileSession(data.profile.id, data.profile.saveCode);
+    renderStats(data.profile);
+    ui.result.textContent = `Paused and saved. Resume with ${data.profile.saveCode}.`;
   } catch (error) {
     ui.result.textContent = error.message;
   }
@@ -448,7 +517,7 @@ ui.finishButton.addEventListener("click", async () => {
       body: JSON.stringify({ playerId: session.playerId }),
     });
     renderState(data.state);
-    const winner = data.state.players.find((player) => player.id === data.state.room.winnerId);
+    const winner = data.state.players.find((player) => player.isWinner);
     ui.result.textContent = winner
       ? `${winner.name} won the pot.`
       : "Room ended.";
@@ -487,6 +556,10 @@ ui.spinForm.addEventListener("submit", async (event) => {
 });
 
 renderReels(initialColumns);
+if (session.saveCode) {
+  ui.saveCodeValue.textContent = session.saveCode;
+  ui.resumeCode.value = session.saveCode;
+}
 if (location.port === "5500") {
   ui.result.textContent = apiServerMessage();
 }

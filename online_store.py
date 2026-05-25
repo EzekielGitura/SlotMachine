@@ -5,19 +5,24 @@ import string
 import threading
 from copy import deepcopy
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from game import GameStats, Player, SlotGame
 from slot_machine import SlotMachine
 
 
-STARTING_COINS = 10000
+STARTING_COINS = 50000
 DEFAULT_ROOM_STAKE = 500
 MIN_ROOM_STAKE = 100
 MAX_ROOM_STAKE = 5000
 LEAVE_PENALTY = 100
 DAILY_REWARD = 750
 ROOM_VICTORY_BONUS = 250
+AWAY_REWARD_DAYS = 7
+FIRST_AWAY_REWARD_COINS = 25000
+FIRST_AWAY_REWARD_FREE_SPINS = 7
+RETURN_AWAY_REWARD_COINS = 250
+RETURN_AWAY_REWARD_FREE_SPINS = 2
 
 RANK_GIFTS = {
     1: {"name": "Ruby Crown", "description": "Top table aura", "accent": "ruby"},
@@ -90,6 +95,14 @@ def make_id():
     return secrets.token_urlsafe(12)
 
 
+def make_save_code():
+    alphabet = string.ascii_uppercase + string.digits
+    return "-".join(
+        "".join(secrets.choice(alphabet) for _ in range(4))
+        for _ in range(3)
+    )
+
+
 def make_room_code(existing):
     alphabet = string.ascii_uppercase + string.digits
     while True:
@@ -105,10 +118,22 @@ def league_for(points):
     return dict(LEAGUES[-1])
 
 
+def parse_iso(value):
+    if not value:
+        return utc_now()
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 class MemoryBackend:
     def __init__(self):
         self.profiles = {}
         self.rooms = {}
+        self.save_codes = {}
 
     def get_profile(self, player_id):
         profile = self.profiles.get(player_id)
@@ -116,6 +141,12 @@ class MemoryBackend:
 
     def save_profile(self, profile):
         self.profiles[profile["id"]] = deepcopy(profile)
+        if profile.get("save_code"):
+            self.save_codes[profile["save_code"].upper()] = profile["id"]
+
+    def get_profile_by_save_code(self, save_code):
+        player_id = self.save_codes.get(save_code.upper())
+        return self.get_profile(player_id) if player_id else None
 
     def list_profiles(self):
         return [deepcopy(profile) for profile in self.profiles.values()]
@@ -144,6 +175,9 @@ class RedisBackend:
     def profile_key(self, player_id):
         return f"slot:profile:{player_id}"
 
+    def save_code_key(self, save_code):
+        return f"slot:savecode:{save_code.upper()}"
+
     def room_key(self, code):
         return f"slot:room:{code.upper()}"
 
@@ -156,10 +190,16 @@ class RedisBackend:
         payload = json.dumps(profile)
         pipe = self.redis.pipeline()
         pipe.set(self.profile_key(player_id), payload)
+        if profile.get("save_code"):
+            pipe.set(self.save_code_key(profile["save_code"]), player_id)
         pipe.sadd("slot:profiles", player_id)
         pipe.zadd("slot:leaderboard:coins", {player_id: profile["balance"]})
         pipe.zadd("slot:leaderboard:league", {player_id: profile["league_points"]})
         pipe.execute()
+
+    def get_profile_by_save_code(self, save_code):
+        player_id = self.redis.get(self.save_code_key(save_code))
+        return self.get_profile(player_id) if player_id else None
 
     def list_profiles(self):
         player_ids = self.redis.smembers("slot:profiles")
@@ -221,6 +261,7 @@ class OnlineStore:
 
         profile = {
             "id": player_id,
+            "save_code": self.generate_save_code(),
             "name": self.clean_name(name),
             "balance": STARTING_COINS,
             "free_spins": 0,
@@ -232,22 +273,85 @@ class OnlineStore:
             "wins": 0,
             "losses": 0,
             "forfeits": 0,
+            "paused": False,
+            "current_room_code": None,
+            "last_seen_at": iso_now(),
+            "last_paused_at": None,
+            "away_reward_count": 0,
+            "last_away_reward_at": None,
             "created_at": iso_now(),
             "updated_at": iso_now(),
         }
         self.backend.save_profile(profile)
         return profile
 
+    def generate_save_code(self):
+        for _ in range(20):
+            save_code = make_save_code()
+            if not self.backend.get_profile_by_save_code(save_code):
+                return save_code
+        return make_id().upper()
+
     def ensure_profile(self, player_id=None, name="Player"):
         if player_id:
             profile = self.backend.get_profile(player_id)
             if profile:
+                self.normalize_profile(profile)
                 if name:
                     profile["name"] = self.clean_name(name)
+                    profile["paused"] = False
                     profile["updated_at"] = iso_now()
                     self.backend.save_profile(profile)
                 return profile
         return self.create_profile(name, player_id)
+
+    def resume_profile(self, save_code, name=None):
+        with self.lock:
+            profile = self.backend.get_profile_by_save_code(self.clean_save_code(save_code))
+            if not profile:
+                raise ValueError("Save code not found.")
+
+            self.normalize_profile(profile)
+            if name:
+                profile["name"] = self.clean_name(name)
+
+            reward = self.apply_away_reward(profile)
+            profile["paused"] = False
+            profile["last_seen_at"] = iso_now()
+            profile["updated_at"] = iso_now()
+            self.backend.save_profile(profile)
+
+            room_code = profile.get("current_room_code")
+            room_state = None
+            if room_code and self.backend.get_room(room_code):
+                room_state = self.room_state(room_code, profile["id"])
+
+            return {
+                "playerId": profile["id"],
+                "profile": self.profile_state(
+                    profile,
+                    include_save_code=True,
+                    include_player_id=True,
+                ),
+                "roomCode": room_code,
+                "state": room_state,
+                "reward": reward,
+            }
+
+    def pause_profile(self, player_id):
+        with self.lock:
+            profile = self.require_profile(player_id)
+            self.normalize_profile(profile)
+            profile["paused"] = True
+            profile["last_seen_at"] = iso_now()
+            profile["last_paused_at"] = iso_now()
+            profile["updated_at"] = iso_now()
+            self.backend.save_profile(profile)
+            return self.profile_state(
+                profile,
+                include_save_code=True,
+                include_player_id=True,
+            )
 
     def create_room(self, name, player_id=None, stake=DEFAULT_ROOM_STAKE):
         with self.lock:
@@ -295,6 +399,9 @@ class OnlineStore:
             raise ValueError(f"{profile['name']} needs {stake} coins to enter this room.")
 
         profile["balance"] -= stake
+        profile["current_room_code"] = room["code"]
+        profile["paused"] = False
+        profile["last_seen_at"] = iso_now()
         profile["updated_at"] = iso_now()
         room["players"].append(profile["id"])
         room["scores"][profile["id"]] = 0
@@ -323,9 +430,12 @@ class OnlineStore:
                 raise ValueError("Player already forfeited this room.")
 
             profile = self.require_profile(player_id)
+            self.normalize_profile(profile)
             penalty = min(profile["balance"], LEAVE_PENALTY)
             profile["balance"] -= penalty
             profile["forfeits"] += 1
+            profile["current_room_code"] = None
+            profile["last_seen_at"] = iso_now()
             profile["updated_at"] = iso_now()
             room["forfeited"].append(player_id)
             room["scores"][player_id] = room["scores"].get(player_id, 0) - penalty
@@ -348,6 +458,7 @@ class OnlineStore:
                 raise ValueError("Forfeited players cannot spin in this room.")
 
             profile = self.require_profile(player_id)
+            self.normalize_profile(profile)
             player = self.profile_to_player(profile)
             result = self.slot_game.spin(player, int(lines), int(bet))
             self.player_to_profile(player, profile)
@@ -356,6 +467,8 @@ class OnlineStore:
 
             awards = self.awards_for_spin(profile, result)
             profile["league_points"] += max(result.net, 0) // 10
+            profile["paused"] = False
+            profile["last_seen_at"] = iso_now()
             profile["updated_at"] = iso_now()
             self.backend.save_profile(profile)
 
@@ -393,11 +506,14 @@ class OnlineStore:
                 ),
             )
             winner = self.require_profile(winner_id)
+            self.normalize_profile(winner)
             payout = room["pot"] + room["victory_bonus"]
             winner["balance"] += payout
             winner["wins"] += 1
             winner["league_points"] += max(room["pot"] // 10, 0) + 100
             awards = self.award_achievement(winner, "room_winner")
+            winner["current_room_code"] = None
+            winner["last_seen_at"] = iso_now()
             winner["updated_at"] = iso_now()
             self.backend.save_profile(winner)
 
@@ -406,7 +522,10 @@ class OnlineStore:
                     continue
                 loser = self.backend.get_profile(loser_id)
                 if loser:
+                    self.normalize_profile(loser)
                     loser["losses"] += 1
+                    loser["current_room_code"] = None
+                    loser["last_seen_at"] = iso_now()
                     loser["updated_at"] = iso_now()
                     self.backend.save_profile(loser)
 
@@ -426,6 +545,7 @@ class OnlineStore:
     def claim_daily_reward(self, player_id, name="Player"):
         with self.lock:
             profile = self.ensure_profile(player_id, name)
+            self.normalize_profile(profile)
             today = today_key()
             if profile.get("daily_claimed") == today:
                 raise ValueError("Daily reward already claimed today.")
@@ -433,19 +553,32 @@ class OnlineStore:
             profile["daily_claimed"] = today
             profile["balance"] += DAILY_REWARD
             profile["league_points"] += 50
+            profile["last_seen_at"] = iso_now()
             profile["updated_at"] = iso_now()
             self.backend.save_profile(profile)
             return {
                 "amount": DAILY_REWARD,
-                "profile": self.profile_state(profile),
+                "profile": self.profile_state(
+                    profile,
+                    include_save_code=True,
+                    include_player_id=True,
+                ),
             }
 
     def room_state(self, code, viewer_id=None):
         room = self.require_room(code)
-        players = [
-            self.profile_state(self.require_profile(player_id), room)
-            for player_id in room["players"]
-        ]
+        players = []
+        for player_id in room["players"]:
+            player = self.profile_state(
+                self.require_profile(player_id),
+                room,
+                include_save_code=player_id == viewer_id,
+                include_player_id=player_id == viewer_id,
+            )
+            player["isYou"] = player_id == viewer_id
+            player["isWinner"] = player_id == room["winner_id"]
+            players.append(player)
+
         players.sort(
             key=lambda item: (
                 item["roomScore"],
@@ -457,12 +590,12 @@ class OnlineStore:
             player["rank"] = index
             player["gift"] = RANK_GIFTS.get(index)
 
-        players_by_id = {player["id"]: player for player in players}
+        viewer = next((player for player in players if player["isYou"]), None)
         return {
             "store": self.backend_name,
             "roomCode": room["code"],
             "viewerId": viewer_id,
-            "you": players_by_id.get(viewer_id),
+            "you": viewer,
             "room": self.public_room_state(room),
             "players": players,
             "rankGifts": [
@@ -475,6 +608,11 @@ class OnlineStore:
             "events": list(reversed(room["events"])),
             "config": {
                 "startingCoins": STARTING_COINS,
+                "awayRewardDays": AWAY_REWARD_DAYS,
+                "firstAwayRewardCoins": FIRST_AWAY_REWARD_COINS,
+                "firstAwayRewardFreeSpins": FIRST_AWAY_REWARD_FREE_SPINS,
+                "returnAwayRewardCoins": RETURN_AWAY_REWARD_COINS,
+                "returnAwayRewardFreeSpins": RETURN_AWAY_REWARD_FREE_SPINS,
                 "defaultStake": DEFAULT_ROOM_STAKE,
                 "minStake": MIN_ROOM_STAKE,
                 "maxStake": MAX_ROOM_STAKE,
@@ -487,7 +625,8 @@ class OnlineStore:
             },
         }
 
-    def profile_state(self, profile, room=None):
+    def profile_state(self, profile, room=None, include_save_code=False, include_player_id=False):
+        self.normalize_profile(profile)
         stats = deepcopy(profile["stats"])
         total_wagered = stats.get("total_wagered", 0)
         total_won = stats.get("total_won", 0)
@@ -497,8 +636,7 @@ class OnlineStore:
         stats["winRate"] = winning_spins / spins if spins else 0
         room_score = room["scores"].get(profile["id"], 0) if room else 0
 
-        return {
-            "id": profile["id"],
+        state = {
             "name": profile["name"],
             "balance": profile["balance"],
             "freeSpins": profile["free_spins"],
@@ -515,10 +653,21 @@ class OnlineStore:
             "wins": profile["wins"],
             "losses": profile["losses"],
             "forfeits": profile["forfeits"],
+            "paused": profile["paused"],
+            "currentRoomCode": profile["current_room_code"],
+            "lastSeenAt": profile["last_seen_at"],
+            "lastPausedAt": profile["last_paused_at"],
+            "awayRewardCount": profile["away_reward_count"],
+            "lastAwayRewardAt": profile["last_away_reward_at"],
             "roomScore": room_score,
             "roomSpins": room["spins"].get(profile["id"], 0) if room else 0,
             "forfeited": profile["id"] in room["forfeited"] if room else False,
         }
+        if include_player_id:
+            state["id"] = profile["id"]
+        if include_save_code:
+            state["saveCode"] = profile["save_code"]
+        return state
 
     def public_room_state(self, room):
         return {
@@ -568,6 +717,52 @@ class OnlineStore:
         profile["league_points"] += achievement["league_points"]
         return [{"id": achievement_id, **achievement}]
 
+    def apply_away_reward(self, profile):
+        self.normalize_profile(profile)
+        last_seen = parse_iso(profile["last_seen_at"])
+        away_time = utc_now() - last_seen
+        if away_time < timedelta(days=AWAY_REWARD_DAYS):
+            return None
+
+        if profile["away_reward_count"] == 0:
+            coins = FIRST_AWAY_REWARD_COINS
+            free_spins = FIRST_AWAY_REWARD_FREE_SPINS
+            label = "Welcome Back Reward"
+        else:
+            coins = RETURN_AWAY_REWARD_COINS
+            free_spins = RETURN_AWAY_REWARD_FREE_SPINS
+            label = "Return Reward"
+
+        profile["balance"] += coins
+        profile["free_spins"] += free_spins
+        profile["away_reward_count"] += 1
+        profile["last_away_reward_at"] = iso_now()
+        return {
+            "name": label,
+            "coins": coins,
+            "freeSpins": free_spins,
+            "awayDays": away_time.days,
+        }
+
+    @staticmethod
+    def normalize_profile(profile):
+        profile.setdefault("save_code", make_save_code())
+        profile.setdefault("paused", False)
+        profile.setdefault("current_room_code", None)
+        profile.setdefault("last_seen_at", profile.get("updated_at") or iso_now())
+        profile.setdefault("last_paused_at", None)
+        profile.setdefault("away_reward_count", 0)
+        profile.setdefault("last_away_reward_at", None)
+        profile.setdefault("free_spins", 0)
+        profile.setdefault("history", [])
+        profile.setdefault("achievements", [])
+        profile.setdefault("daily_claimed", None)
+        profile.setdefault("league_points", 0)
+        profile.setdefault("wins", 0)
+        profile.setdefault("losses", 0)
+        profile.setdefault("forfeits", 0)
+        profile.setdefault("stats", asdict(GameStats()))
+
     @staticmethod
     def add_event(room, message):
         room["events"].append(message)
@@ -605,6 +800,10 @@ class OnlineStore:
     @staticmethod
     def clean_name(name):
         return str(name or "Player").strip()[:24] or "Player"
+
+    @staticmethod
+    def clean_save_code(save_code):
+        return str(save_code or "").strip().upper()
 
     @staticmethod
     def validate_stake(stake):
