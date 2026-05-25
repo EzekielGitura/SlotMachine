@@ -42,7 +42,9 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 - Later 7+ day return rewards: 250 coins and 2 free spins
 - Rank 1-5 cosmetic gifts shown on the leaderboard
 - Burgundy-led responsive browser theme with sage, teal, ivory, and gold accents
-- Illustrated slot cabinet, animated lever pull, left-to-right reel stops, jackpot confetti, generated sound effects, soft music toggle, in-room chat, and emoji reactions
+- Game-style currency HUD with compact K/M/B coin labels
+- Hamburger settings menu for profile creation and save-code login
+- Illustrated slot cabinet, animated lever pull, left-to-right reel stops, jackpot confetti, CC0 audio assets, soft music toggle, in-room chat, and emoji reactions
 
 ## Project Layout
 

@@ -2,18 +2,20 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   createForm: $("create-form"),
-  createName: $("create-name"),
   createStake: $("create-stake"),
   joinForm: $("join-form"),
-  joinName: $("join-name"),
   joinCode: $("join-code"),
-  resumeForm: $("resume-form"),
-  resumeCode: $("resume-code"),
+  profileCreateForm: $("profile-create-form"),
+  profileLoginForm: $("profile-login-form"),
+  profileName: $("profile-name"),
+  profileSaveCode: $("profile-save-code"),
   roomCode: $("room-code"),
-  currentBalanceValue: $("current-balance-value"),
+  topBalanceValue: $("top-balance-value"),
   saveCodeValue: $("save-code-value"),
   friendCodeValue: $("friend-code-value"),
   playerSummary: $("player-summary"),
+  menuToggle: $("menu-toggle"),
+  settingsMenu: $("settings-menu"),
   reels: $("reels"),
   cabinet: $("slot-cabinet"),
   leverButton: $("lever-button"),
@@ -45,6 +47,7 @@ const session = {
   roomCode: localStorage.getItem("slotRoomCode"),
   playerId: localStorage.getItem("slotPlayerId"),
   saveCode: localStorage.getItem("slotSaveCode"),
+  playerName: localStorage.getItem("slotPlayerName") || "",
   pollTimer: null,
 };
 
@@ -81,10 +84,57 @@ let audioContext;
 let musicTimer;
 let musicEnabled = false;
 let soundEnabled = true;
-const coinFormat = new Intl.NumberFormat("en-US");
+const coinFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+const audioTracks = {
+  music: new Audio("assets/audio/calm-loop.mp3"),
+  spin: new Audio("assets/audio/reel-spin.ogg"),
+  stop: new Audio("assets/audio/reel-stop.ogg"),
+  jackpot: new Audio("assets/audio/jackpot.ogg"),
+};
+
+audioTracks.music.loop = true;
+audioTracks.music.volume = 0.22;
 
 function formatCoins(value) {
-  return `${coinFormat.format(Number(value) || 0)} coins`;
+  return `${formatShortNumber(value)} coins`;
+}
+
+function formatShortNumber(value) {
+  const number = Number(value) || 0;
+  const abs = Math.abs(number);
+  const units = [
+    [1_000_000_000, "B"],
+    [1_000_000, "M"],
+    [1_000, "K"],
+  ];
+  for (const [size, suffix] of units) {
+    if (abs >= size) {
+      const short = number / size;
+      const formatted = Number.isInteger(short)
+        ? String(short)
+        : coinFormat.format(short);
+      return `${formatted}${suffix}`;
+    }
+  }
+  return coinFormat.format(number);
+}
+
+function openSettingsMenu() {
+  ui.settingsMenu.hidden = false;
+  ui.menuToggle.setAttribute("aria-expanded", "true");
+}
+
+function closeSettingsMenu() {
+  ui.settingsMenu.hidden = true;
+  ui.menuToggle.setAttribute("aria-expanded", "false");
+}
+
+function toggleSettingsMenu() {
+  if (ui.settingsMenu.hidden) {
+    openSettingsMenu();
+  } else {
+    closeSettingsMenu();
+  }
 }
 
 function escapeHtml(value) {
@@ -230,16 +280,20 @@ function renderState(state) {
   }
 
   if (you) {
+    session.playerName = you.name;
+    localStorage.setItem("slotPlayerName", you.name);
+    ui.profileName.value = you.name;
     if (you.saveCode) {
       session.saveCode = you.saveCode;
       localStorage.setItem("slotSaveCode", you.saveCode);
       ui.saveCodeValue.textContent = you.saveCode;
+      ui.profileSaveCode.value = you.saveCode;
     }
     if (you.friendCode) {
       ui.friendCodeValue.textContent = you.friendCode;
     }
-    ui.currentBalanceValue.textContent = formatCoins(you.balance);
-    ui.playerSummary.textContent = `${you.name} | ${formatCoins(you.balance)} | ${you.league.name} league | pot ${coinFormat.format(room.pot || 0)} | stake ${coinFormat.format(room.stake || 0)}`;
+    ui.topBalanceValue.textContent = formatShortNumber(you.balance);
+    ui.playerSummary.textContent = `${you.name} | ${formatCoins(you.balance)} | ${you.league.name} league | pot ${formatShortNumber(room.pot || 0)} | stake ${formatShortNumber(room.stake || 0)}`;
     renderStats(you);
     renderFriends(you.friends || []);
   }
@@ -268,7 +322,7 @@ function applyConfig(config) {
     ui.bet.value = config.maxBet;
   }
   if (!session.playerId) {
-    ui.currentBalanceValue.textContent = `${coinFormat.format(config.startingCoins)} starting coins`;
+    ui.topBalanceValue.textContent = formatShortNumber(config.startingCoins);
     ui.playerSummary.textContent = `No active profile | ${formatCoins(config.startingCoins)} starting balance`;
   }
 }
@@ -279,7 +333,7 @@ async function loadAppConfig() {
     applyConfig(data.config);
   } catch (error) {
     if (!session.playerId) {
-      ui.playerSummary.textContent = "No active profile | 50,000 starting balance";
+      ui.playerSummary.textContent = "No active profile | 50K starting balance";
     }
   }
 }
@@ -305,7 +359,7 @@ function renderLeaderboard(players) {
 
     const value = document.createElement("span");
     value.className = "leader-score";
-    value.innerHTML = `${player.roomScore}<br><small>${player.balance} coins</small>`;
+    value.innerHTML = `${formatShortNumber(player.roomScore)}<br><small>${formatCoins(player.balance)}</small>`;
 
     row.append(identity, value);
     ui.leaderboard.append(row);
@@ -362,12 +416,12 @@ function renderFriends(friends) {
 function renderStats(player) {
   const stats = [
     ["League", `${player.league.name} (${player.leaguePoints})`],
-    ["Room score", player.roomScore],
-    ["Coins", player.balance],
+    ["Room score", formatShortNumber(player.roomScore)],
+    ["Coins", formatCoins(player.balance)],
     ["Spins", player.stats.spins],
     ["Win rate", `${Math.round(player.stats.winRate * 100)}%`],
-    ["Biggest win", `$${player.stats.biggest_win}`],
-    ["Net", `$${player.stats.net}`],
+    ["Biggest win", formatCoins(player.stats.biggest_win)],
+    ["Net", formatCoins(player.stats.net)],
     ["Jackpots", player.stats.jackpots],
     ["Free spins", player.freeSpins],
     ["Achievements", player.achievements.length],
@@ -418,7 +472,7 @@ function renderSpin(spin) {
   renderReels(spin.columns);
 
   const lines = [];
-  lines.push(spin.totalWinnings ? `Won $${spin.totalWinnings}` : "No win");
+  lines.push(spin.totalWinnings ? `Won ${formatCoins(spin.totalWinnings)}` : "No win");
 
   if (spin.freeSpinUsed) {
     lines.push("Free spin used");
@@ -434,12 +488,12 @@ function renderSpin(spin) {
   }
   if (spin.awards?.length) {
     spin.awards.forEach((award) => {
-      lines.push(`${award.name}: +${award.coins} coins`);
+      lines.push(`${award.name}: +${formatCoins(award.coins)}`);
     });
   }
 
   spin.lineWins.forEach((line) => {
-    lines.push(`${line.name}: ${line.symbols.join(" ")} pays $${line.amount}`);
+    lines.push(`${line.name}: ${line.symbols.join(" ")} pays ${formatCoins(line.amount)}`);
   });
 
   spin.messages.forEach((message) => lines.push(message));
@@ -570,6 +624,9 @@ function playSpinSound() {
   if (!soundEnabled) {
     return;
   }
+  if (playClip(audioTracks.spin, 0.32)) {
+    return;
+  }
   for (let index = 0; index < 12; index += 1) {
     playTone(160 + index * 18, 0.07, "sawtooth", 0.028, index * 0.055);
   }
@@ -579,6 +636,9 @@ function playReelStopSound(column) {
   if (!soundEnabled) {
     return;
   }
+  if (playClip(audioTracks.stop, 0.32)) {
+    return;
+  }
   playTone(220 + column * 80, 0.1, "square", 0.045);
 }
 
@@ -586,19 +646,44 @@ function playJackpotSound() {
   if (!soundEnabled) {
     return;
   }
+  playClip(audioTracks.jackpot, 0.45);
   [523, 659, 784, 1046].forEach((note, index) => {
     playTone(note, 0.16, "triangle", 0.07, index * 0.12);
   });
 }
 
+function playClip(track, volume = 0.3) {
+  if (!track) {
+    return false;
+  }
+  const clip = track.cloneNode();
+  clip.volume = volume;
+  const playPromise = clip.play();
+  if (playPromise?.catch) {
+    playPromise.catch(() => {});
+  }
+  return true;
+}
+
 function startMusic() {
+  stopMusic();
+  audioTracks.music.currentTime = 0;
+  audioTracks.music.volume = 0.22;
+  const playPromise = audioTracks.music.play();
+  if (playPromise?.catch) {
+    playPromise.catch(() => {
+      startSynthMusic();
+    });
+  }
+}
+
+function startSynthMusic() {
   const context = ensureAudio();
   if (!context) {
     musicEnabled = false;
     ui.musicToggle.textContent = "Music Off";
     return;
   }
-  stopMusic();
   const notes = [196, 247, 294, 247, 220, 262, 330, 262];
   let index = 0;
   musicTimer = setInterval(() => {
@@ -612,6 +697,7 @@ function startMusic() {
 
 function stopMusic() {
   clearInterval(musicTimer);
+  audioTracks.music.pause();
 }
 
 function saveSession(roomCode, playerId) {
@@ -621,14 +707,48 @@ function saveSession(roomCode, playerId) {
   localStorage.setItem("slotPlayerId", playerId);
 }
 
-function saveProfileSession(playerId, saveCode) {
+function saveProfileSession(playerId, saveCode, name = "") {
   session.playerId = playerId;
   localStorage.setItem("slotPlayerId", playerId);
+  if (name) {
+    session.playerName = name;
+    localStorage.setItem("slotPlayerName", name);
+    ui.profileName.value = name;
+  }
   if (saveCode) {
     session.saveCode = saveCode;
     localStorage.setItem("slotSaveCode", saveCode);
     ui.saveCodeValue.textContent = saveCode;
+    ui.profileSaveCode.value = saveCode;
   }
+}
+
+function renderProfile(profile) {
+  saveProfileSession(profile.id, profile.saveCode, profile.name);
+  ui.topBalanceValue.textContent = formatShortNumber(profile.balance);
+  ui.friendCodeValue.textContent = profile.friendCode || "Add a profile first";
+  ui.playerSummary.textContent = `${profile.name} | ${formatCoins(profile.balance)} | ${profile.league.name} league`;
+  renderStats(profile);
+  renderFriends(profile.friends || []);
+  ui.dailyButton.disabled = !profile.dailyAvailable;
+  ui.pauseButton.disabled = false;
+  ui.leaveButton.disabled = true;
+  ui.finishButton.disabled = true;
+  ui.spinButton.disabled = true;
+  ui.leverButton.disabled = true;
+}
+
+function currentProfileName() {
+  return session.playerName || ui.profileName.value || "Player";
+}
+
+function requireActiveProfile() {
+  if (session.playerId) {
+    return true;
+  }
+  openSettingsMenu();
+  ui.result.textContent = "Create a profile or log in before entering a room.";
+  return false;
 }
 
 function startPolling() {
@@ -659,11 +779,14 @@ async function refreshState() {
 
 ui.createForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!requireActiveProfile()) {
+    return;
+  }
   try {
     const data = await api("/api/rooms", {
       method: "POST",
       body: JSON.stringify({
-        name: ui.createName.value,
+        name: currentProfileName(),
         playerId: session.playerId,
         stake: Number(ui.createStake.value),
       }),
@@ -679,12 +802,15 @@ ui.createForm.addEventListener("submit", async (event) => {
 
 ui.joinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!requireActiveProfile()) {
+    return;
+  }
   try {
     const code = ui.joinCode.value.trim().toUpperCase();
     const data = await api(`/api/rooms/${code}/join`, {
       method: "POST",
       body: JSON.stringify({
-        name: ui.joinName.value,
+        name: currentProfileName(),
         playerId: session.playerId,
       }),
     });
@@ -694,6 +820,25 @@ ui.joinForm.addEventListener("submit", async (event) => {
     ui.result.textContent = "Joined room";
   } catch (error) {
     ui.result.textContent = error.message;
+  }
+});
+
+ui.menuToggle.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleSettingsMenu();
+});
+
+ui.settingsMenu.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", () => {
+  closeSettingsMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeSettingsMenu();
   }
 });
 
@@ -718,17 +863,34 @@ ui.soundToggle.addEventListener("click", () => {
   ui.soundToggle.textContent = soundEnabled ? "Sound On" : "Sound Off";
 });
 
-ui.resumeForm.addEventListener("submit", async (event) => {
+ui.profileCreateForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const data = await api("/api/profile", {
+      method: "POST",
+      body: JSON.stringify({
+        name: ui.profileName.value,
+      }),
+    });
+    renderProfile(data.profile);
+    closeSettingsMenu();
+    ui.result.textContent = `Profile created. Save code: ${data.profile.saveCode}.`;
+  } catch (error) {
+    ui.result.textContent = error.message;
+  }
+});
+
+ui.profileLoginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const data = await api("/api/profile/resume", {
       method: "POST",
       body: JSON.stringify({
-        saveCode: ui.resumeCode.value,
-        name: ui.createName.value || ui.joinName.value,
+        saveCode: ui.profileSaveCode.value,
+        name: ui.profileName.value,
       }),
     });
-    saveProfileSession(data.playerId, data.profile.saveCode);
+    saveProfileSession(data.playerId, data.profile.saveCode, data.profile.name);
     if (data.roomCode) {
       session.roomCode = data.roomCode;
       localStorage.setItem("slotRoomCode", data.roomCode);
@@ -736,16 +898,13 @@ ui.resumeForm.addEventListener("submit", async (event) => {
     if (data.state) {
       renderState(data.state);
     } else {
-      renderStats(data.profile);
-      ui.currentBalanceValue.textContent = formatCoins(data.profile.balance);
-      ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
-      renderFriends(data.profile.friends || []);
-      ui.playerSummary.textContent = `${data.profile.name} | ${formatCoins(data.profile.balance)} | ${data.profile.league.name} league`;
+      renderProfile(data.profile);
     }
     startPolling();
+    closeSettingsMenu();
     ui.result.textContent = data.reward
-      ? `${data.reward.name}: +${data.reward.coins} coins and +${data.reward.freeSpins} free spins`
-      : "Profile resumed.";
+      ? `${data.reward.name}: +${formatCoins(data.reward.coins)} and +${data.reward.freeSpins} free spins`
+      : "Logged in.";
   } catch (error) {
     ui.result.textContent = error.message;
   }
@@ -761,10 +920,10 @@ ui.dailyButton.addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify({
         playerId: session.playerId,
-        name: ui.createName.value || ui.joinName.value,
+        name: currentProfileName(),
       }),
     });
-    ui.result.textContent = `Daily reward claimed: +${data.reward.amount} coins`;
+    ui.result.textContent = `Daily reward claimed: +${formatCoins(data.reward.amount)}`;
     refreshState();
   } catch (error) {
     ui.result.textContent = error.message;
@@ -782,10 +941,7 @@ ui.pauseButton.addEventListener("click", async () => {
       body: JSON.stringify({ playerId: session.playerId }),
     });
     saveProfileSession(data.profile.id, data.profile.saveCode);
-    renderStats(data.profile);
-    ui.currentBalanceValue.textContent = formatCoins(data.profile.balance);
-    ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
-    renderFriends(data.profile.friends || []);
+    renderProfile(data.profile);
     ui.result.textContent = `Paused and saved. Resume with ${data.profile.saveCode}.`;
   } catch (error) {
     ui.result.textContent = error.message;
@@ -845,9 +1001,7 @@ ui.friendForm.addEventListener("submit", async (event) => {
       }),
     });
     ui.friendCodeInput.value = "";
-    ui.friendCodeValue.textContent = data.profile.friendCode;
-    renderStats(data.profile);
-    renderFriends(data.profile.friends || []);
+    renderProfile(data.profile);
     ui.result.textContent = "Friend added.";
   } catch (error) {
     ui.result.textContent = error.message;
@@ -936,7 +1090,10 @@ renderFriends([]);
 ui.leverButton.disabled = ui.spinButton.disabled;
 if (session.saveCode) {
   ui.saveCodeValue.textContent = session.saveCode;
-  ui.resumeCode.value = session.saveCode;
+  ui.profileSaveCode.value = session.saveCode;
+}
+if (session.playerName) {
+  ui.profileName.value = session.playerName;
 }
 if (location.port === "5500") {
   ui.result.textContent = apiServerMessage();

@@ -112,6 +112,10 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
                 self.handle_resume_profile()
                 return
 
+            if path == "/api/profile":
+                self.handle_create_profile()
+                return
+
             if path == "/api/profile/pause":
                 self.handle_pause_profile()
                 return
@@ -189,6 +193,21 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
         name = str(data.get("name", "")).strip() or None
         resumed = STORE.resume_profile(save_code, name)
         self.send_json(200, resumed)
+
+    def handle_create_profile(self):
+        data = self.read_json()
+        name = str(data.get("name", "Player")).strip() or "Player"
+        profile = STORE.create_profile(name)
+        self.send_json(
+            201,
+            {
+                "profile": STORE.profile_state(
+                    profile,
+                    include_save_code=True,
+                    include_player_id=True,
+                )
+            },
+        )
 
     def handle_pause_profile(self):
         data = self.read_json()
