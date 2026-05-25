@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
     <div class="app-shell">
       <header class="topbar">
         <div>
@@ -58,9 +59,33 @@
           <div class="profile-strip">
             <span>Save Code</span>
             <strong id="save-code-value">Create or resume a profile</strong>
+            <span>Friend Code</span>
+            <strong id="friend-code-value">Add a profile first</strong>
           </div>
 
-          <div id="reels" class="reels" aria-live="polite"></div>
+          <div class="audio-controls" aria-label="Audio controls">
+            <button id="music-toggle" type="button">Music Off</button>
+            <button id="sound-toggle" type="button">Sound On</button>
+          </div>
+
+          <div class="slot-cabinet" id="slot-cabinet">
+            <div class="cabinet-beacon" aria-hidden="true"></div>
+            <div class="cabinet-arch">
+              <span>Lucky Room</span>
+            </div>
+            <div class="cabinet-window">
+              <div id="reels" class="reels" aria-live="polite"></div>
+              <button id="lever-button" class="lever" type="button" aria-label="Pull lever to spin">
+                <span class="lever-knob"></span>
+                <span class="lever-stick"></span>
+              </button>
+            </div>
+            <div class="cabinet-base" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
 
           <form id="spin-form" class="spin-controls">
             <label>
@@ -103,6 +128,36 @@
           <section>
             <h2>Room Feed</h2>
             <ol id="events" class="events"></ol>
+          </section>
+
+          <section class="friends-panel">
+            <h2>Friends</h2>
+            <div id="friends" class="friends-list"></div>
+            <form id="friend-form" class="friend-form">
+              <label>
+                Friend Code
+                <input id="friend-code-input" type="text" maxlength="8" autocomplete="off" placeholder="8-character code">
+              </label>
+              <button type="submit">Add</button>
+            </form>
+          </section>
+
+          <section class="chat-panel">
+            <h2>Room Chat</h2>
+            <div id="chat-log" class="chat-log" aria-live="polite"></div>
+            <div class="emoji-row" aria-label="Quick emoji reactions">
+              <button type="button" data-emoji="&#128293;">&#128293;</button>
+              <button type="button" data-emoji="&#127826;">&#127826;</button>
+              <button type="button" data-emoji="&#128142;">&#128142;</button>
+              <button type="button" data-emoji="&#127920;">&#127920;</button>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <label>
+                Message
+                <input id="chat-input" type="text" maxlength="180" autocomplete="off" placeholder="Cheer, tease, or send a quick reaction">
+              </label>
+              <button type="submit">Send</button>
+            </form>
           </section>
         </aside>
       </main>

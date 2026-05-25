@@ -19,6 +19,8 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 13. Render room state, leaderboard, gifts, achievements, and league status in the browser UI.
 14. Let players pause/save and resume later with a private save code.
 15. Award welcome-back rewards after 7+ days away.
+16. Keep public friend codes separate from private save codes.
+17. Add a themed browser cabinet with left-to-right reel suspense, lever motion, sound controls, chat, and jackpot confetti.
 
 ## Features
 
@@ -34,21 +36,23 @@ A competitive slot machine game with a reusable Python engine, offline terminal 
 - Fixed 50,000 starting coins for online players
 - Staked multiplayer rooms with forfeits and pot payouts
 - Pause/save and resume with a private save code
+- Public friend codes for adding other players without sharing resume access
 - First 7+ day welcome-back reward: 25,000 coins and 7 free spins
 - Later 7+ day return rewards: 250 coins and 2 free spins
 - Rank 1-5 cosmetic gifts shown on the leaderboard
 - Burgundy-led responsive browser theme with sage, teal, ivory, and gold accents
+- Illustrated slot cabinet, animated lever pull, left-to-right reel stops, jackpot confetti, generated sound effects, soft music toggle, in-room chat, and emoji reactions
 
 ## Project Layout
 
 - `symbols.py` stores symbol weights, payouts, jackpot settings, and paylines.
 - `slot_machine.py` contains `SlotMachine` and `PayTable`.
 - `game.py` contains offline `Player`, `GameStats`, JSON save/load, and session rules.
-- `online_store.py` contains Redis/memory-backed online profiles, rooms, rewards, achievements, and leagues.
+- `online_store.py` contains Redis/memory-backed online profiles, rooms, rewards, achievements, friends, chat, and leagues.
 - `main.py` runs the terminal game.
 - `web_app.py` runs the browser room server.
 - `web/` contains the browser UI.
-- `test_slot_machine.py` covers spin generation, payouts, bonuses, save/load, room economy, rewards, and gifts.
+- `test_slot_machine.py` covers spin generation, payouts, bonuses, save/load, room economy, rewards, gifts, friends, and chat.
 
 ## Install
 

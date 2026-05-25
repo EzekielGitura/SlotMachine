@@ -11,10 +11,15 @@ const ui = {
   resumeCode: $("resume-code"),
   roomCode: $("room-code"),
   saveCodeValue: $("save-code-value"),
+  friendCodeValue: $("friend-code-value"),
   playerSummary: $("player-summary"),
   reels: $("reels"),
+  cabinet: $("slot-cabinet"),
+  leverButton: $("lever-button"),
   spinForm: $("spin-form"),
   spinButton: $("spin-button"),
+  musicToggle: $("music-toggle"),
+  soundToggle: $("sound-toggle"),
   dailyButton: $("daily-button"),
   pauseButton: $("pause-button"),
   leaveButton: $("leave-button"),
@@ -26,6 +31,13 @@ const ui = {
   rankGifts: $("rank-gifts"),
   stats: $("stats"),
   events: $("events"),
+  friends: $("friends"),
+  friendForm: $("friend-form"),
+  friendCodeInput: $("friend-code-input"),
+  chatLog: $("chat-log"),
+  chatForm: $("chat-form"),
+  chatInput: $("chat-input"),
+  confettiLayer: $("confetti-layer"),
 };
 
 const session = {
@@ -52,6 +64,22 @@ const initialColumns = [
     { symbol: "SEVEN", label: "7", color: "bright_red" },
   ],
 ];
+
+const symbolSamples = [
+  { symbol: "SEVEN", label: "7", color: "bright_red" },
+  { symbol: "DIAMOND", label: "DMD", color: "bright_cyan" },
+  { symbol: "CHERRY", label: "CHRY", color: "red" },
+  { symbol: "BELL", label: "BELL", color: "yellow" },
+  { symbol: "BAR", label: "BAR", color: "white" },
+  { symbol: "LEMON", label: "LEMN", color: "green" },
+  { symbol: "WILD", label: "WILD", color: "magenta" },
+  { symbol: "SCATTER", label: "SCAT", color: "bright_blue" },
+];
+
+let audioContext;
+let musicTimer;
+let musicEnabled = false;
+let soundEnabled = true;
 
 function escapeHtml(value) {
   return String(value)
@@ -161,12 +189,12 @@ function symbolSvg(cell) {
   </svg>`;
 }
 
-function renderReels(columns) {
+function renderReels(columns, columnStates = []) {
   ui.reels.innerHTML = "";
 
   columns.forEach((column, columnIndex) => {
     const columnEl = document.createElement("div");
-    columnEl.className = "reel-column";
+    columnEl.className = `reel-column ${columnStates[columnIndex] || ""}`.trim();
 
     column.forEach((cell, rowIndex) => {
       const cellEl = document.createElement("div");
@@ -185,6 +213,7 @@ function renderState(state) {
   const room = state.room || {};
   ui.roomCode.textContent = state.roomCode || "------";
   ui.spinButton.disabled = !you || room.status === "completed" || you.forfeited;
+  ui.leverButton.disabled = ui.spinButton.disabled;
   ui.dailyButton.disabled = !you || !you.dailyAvailable;
   ui.pauseButton.disabled = !you;
   ui.leaveButton.disabled = !you || room.status === "completed" || you.forfeited;
@@ -210,13 +239,18 @@ function renderState(state) {
       localStorage.setItem("slotSaveCode", you.saveCode);
       ui.saveCodeValue.textContent = you.saveCode;
     }
+    if (you.friendCode) {
+      ui.friendCodeValue.textContent = you.friendCode;
+    }
     ui.playerSummary.textContent = `${you.name} | ${you.balance} coins | ${you.league.name} league | pot ${room.pot || 0} | stake ${room.stake || 0}`;
     renderStats(you);
+    renderFriends(you.friends || []);
   }
 
   renderLeaderboard(state.players || []);
   renderRankGifts(state.rankGifts || []);
   renderEvents(state.events || []);
+  renderChat(state.chat || []);
 }
 
 function renderLeaderboard(players) {
@@ -268,6 +302,32 @@ function renderRankGifts(gifts) {
   });
 }
 
+function renderFriends(friends) {
+  ui.friends.innerHTML = "";
+
+  if (!friends.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No friends yet";
+    ui.friends.append(empty);
+    return;
+  }
+
+  friends.forEach((friend) => {
+    const card = document.createElement("div");
+    card.className = "friend-card";
+
+    const identity = document.createElement("strong");
+    identity.textContent = friend.name;
+
+    const details = document.createElement("span");
+    details.textContent = `${friend.league.name} league | ${friend.friendCode}`;
+
+    card.append(identity, details);
+    ui.friends.append(card);
+  });
+}
+
 function renderStats(player) {
   const stats = [
     ["League", `${player.league.name} (${player.leaguePoints})`],
@@ -303,6 +363,26 @@ function renderEvents(events) {
   });
 }
 
+function renderChat(messages) {
+  ui.chatLog.innerHTML = "";
+  messages.forEach((message) => {
+    const item = document.createElement("div");
+    item.className = `chat-message ${message.kind === "emoji" ? "is-emoji" : ""}`;
+
+    if (message.kind !== "emoji") {
+      const name = document.createElement("strong");
+      name.textContent = message.playerName;
+      item.append(name);
+    }
+
+    const body = document.createElement("span");
+    body.textContent = message.message;
+    item.append(body);
+    ui.chatLog.append(item);
+  });
+  ui.chatLog.scrollTop = ui.chatLog.scrollHeight;
+}
+
 function renderSpin(spin) {
   renderReels(spin.columns);
 
@@ -336,6 +416,171 @@ function renderSpin(spin) {
   ui.result.classList.remove("result-pop");
   void ui.result.offsetWidth;
   ui.result.classList.add("result-pop");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomCell() {
+  return symbolSamples[Math.floor(Math.random() * symbolSamples.length)];
+}
+
+function randomColumns() {
+  return Array.from({ length: 3 }, () =>
+    Array.from({ length: 3 }, () => randomCell())
+  );
+}
+
+async function animateSpinToResult(finalColumns) {
+  const displayed = randomColumns();
+  const locked = [false, false, false];
+  const states = ["is-spinning", "is-spinning", "is-spinning"];
+
+  playSpinSound();
+  ui.cabinet.classList.add("is-pulling");
+  ui.reels.classList.add("is-spinning");
+
+  const interval = setInterval(() => {
+    for (let column = 0; column < displayed.length; column += 1) {
+      if (!locked[column]) {
+        displayed[column] = Array.from({ length: 3 }, () => randomCell());
+      }
+    }
+    renderReels(displayed, states);
+  }, 86);
+
+  await delay(620);
+  ui.cabinet.classList.remove("is-pulling");
+
+  for (let column = 0; column < finalColumns.length; column += 1) {
+    states[column] = "is-stopping";
+    await delay(520 + column * 180);
+    locked[column] = true;
+    displayed[column] = finalColumns[column];
+    states[column] = "";
+    playReelStopSound(column);
+    renderReels(displayed, states);
+  }
+
+  clearInterval(interval);
+  ui.reels.classList.remove("is-spinning");
+  renderReels(finalColumns);
+}
+
+function triggerConfetti() {
+  const colors = ["#731f35", "#c73550", "#d6a33d", "#227c7d", "#fff1c6"];
+  ui.confettiLayer.innerHTML = "";
+
+  for (let index = 0; index < 90; index += 1) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = colors[index % colors.length];
+    piece.style.setProperty("--drift", `${Math.random() * 220 - 110}px`);
+    piece.style.setProperty("--fall-duration", `${1200 + Math.random() * 1200}ms`);
+    piece.style.setProperty("--spin", `${Math.random() * 360}deg`);
+    ui.confettiLayer.append(piece);
+  }
+
+  ui.cabinet.classList.remove("jackpot-flash");
+  void ui.cabinet.offsetWidth;
+  ui.cabinet.classList.add("jackpot-flash");
+  setTimeout(() => {
+    ui.confettiLayer.innerHTML = "";
+    ui.cabinet.classList.remove("jackpot-flash");
+  }, 2600);
+}
+
+function ensureAudio() {
+  if (!audioContext) {
+    const AudioEngine = window.AudioContext || window.webkitAudioContext;
+    if (!AudioEngine) {
+      return null;
+    }
+    audioContext = new AudioEngine();
+  }
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
+  return audioContext;
+}
+
+function playTone(
+  frequency,
+  duration = 0.12,
+  type = "sine",
+  gain = 0.05,
+  startOffset = 0,
+  allowMuted = false
+) {
+  if (!soundEnabled && !allowMuted) {
+    return;
+  }
+
+  const context = ensureAudio();
+  if (!context) {
+    return;
+  }
+  const oscillator = context.createOscillator();
+  const volume = context.createGain();
+  const start = context.currentTime + startOffset;
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  volume.gain.setValueAtTime(0.0001, start);
+  volume.gain.exponentialRampToValueAtTime(gain, start + 0.02);
+  volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(volume).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playSpinSound() {
+  if (!soundEnabled) {
+    return;
+  }
+  for (let index = 0; index < 12; index += 1) {
+    playTone(160 + index * 18, 0.07, "sawtooth", 0.028, index * 0.055);
+  }
+}
+
+function playReelStopSound(column) {
+  if (!soundEnabled) {
+    return;
+  }
+  playTone(220 + column * 80, 0.1, "square", 0.045);
+}
+
+function playJackpotSound() {
+  if (!soundEnabled) {
+    return;
+  }
+  [523, 659, 784, 1046].forEach((note, index) => {
+    playTone(note, 0.16, "triangle", 0.07, index * 0.12);
+  });
+}
+
+function startMusic() {
+  const context = ensureAudio();
+  if (!context) {
+    musicEnabled = false;
+    ui.musicToggle.textContent = "Music Off";
+    return;
+  }
+  stopMusic();
+  const notes = [196, 247, 294, 247, 220, 262, 330, 262];
+  let index = 0;
+  musicTimer = setInterval(() => {
+    if (!musicEnabled) {
+      return;
+    }
+    playTone(notes[index % notes.length], 0.22, "triangle", 0.018, 0, true);
+    index += 1;
+  }, 520);
+}
+
+function stopMusic() {
+  clearInterval(musicTimer);
 }
 
 function saveSession(roomCode, playerId) {
@@ -421,6 +666,27 @@ ui.joinForm.addEventListener("submit", async (event) => {
   }
 });
 
+ui.leverButton.addEventListener("click", () => {
+  if (!ui.spinButton.disabled) {
+    ui.spinForm.requestSubmit();
+  }
+});
+
+ui.musicToggle.addEventListener("click", () => {
+  musicEnabled = !musicEnabled;
+  ui.musicToggle.textContent = musicEnabled ? "Music On" : "Music Off";
+  if (musicEnabled) {
+    startMusic();
+  } else {
+    stopMusic();
+  }
+});
+
+ui.soundToggle.addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  ui.soundToggle.textContent = soundEnabled ? "Sound On" : "Sound Off";
+});
+
 ui.resumeForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -440,6 +706,8 @@ ui.resumeForm.addEventListener("submit", async (event) => {
       renderState(data.state);
     } else {
       renderStats(data.profile);
+      ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
+      renderFriends(data.profile.friends || []);
       ui.playerSummary.textContent = `${data.profile.name} | ${data.profile.balance} coins | ${data.profile.league.name} league`;
     }
     startPolling();
@@ -483,6 +751,8 @@ ui.pauseButton.addEventListener("click", async () => {
     });
     saveProfileSession(data.profile.id, data.profile.saveCode);
     renderStats(data.profile);
+    ui.friendCodeValue.textContent = data.profile.friendCode || "Add a profile first";
+    renderFriends(data.profile.friends || []);
     ui.result.textContent = `Paused and saved. Resume with ${data.profile.saveCode}.`;
   } catch (error) {
     ui.result.textContent = error.message;
@@ -526,6 +796,68 @@ ui.finishButton.addEventListener("click", async () => {
   }
 });
 
+ui.friendForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!session.playerId) {
+    ui.result.textContent = "Create or resume a profile before adding friends.";
+    return;
+  }
+
+  try {
+    const data = await api("/api/friends/add", {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: session.playerId,
+        friendCode: ui.friendCodeInput.value,
+      }),
+    });
+    ui.friendCodeInput.value = "";
+    ui.friendCodeValue.textContent = data.profile.friendCode;
+    renderStats(data.profile);
+    renderFriends(data.profile.friends || []);
+    ui.result.textContent = "Friend added.";
+  } catch (error) {
+    ui.result.textContent = error.message;
+  }
+});
+
+async function sendChat(message, kind = "text") {
+  if (!session.roomCode || !session.playerId) {
+    ui.result.textContent = "Join a room before chatting.";
+    return;
+  }
+
+  try {
+    const data = await api(`/api/rooms/${session.roomCode}/chat`, {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: session.playerId,
+        message,
+        kind,
+      }),
+    });
+    renderState(data.state);
+  } catch (error) {
+    ui.result.textContent = error.message;
+  }
+}
+
+ui.chatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = ui.chatInput.value.trim();
+  if (!message) {
+    return;
+  }
+  ui.chatInput.value = "";
+  sendChat(message);
+});
+
+document.querySelectorAll("[data-emoji]").forEach((button) => {
+  button.addEventListener("click", () => {
+    sendChat(button.dataset.emoji, "emoji");
+  });
+});
+
 ui.spinForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!session.roomCode || !session.playerId) {
@@ -533,8 +865,9 @@ ui.spinForm.addEventListener("submit", async (event) => {
   }
 
   ui.spinButton.disabled = true;
+  ui.leverButton.disabled = true;
   ui.result.textContent = "Spinning";
-  ui.reels.classList.add("is-spinning");
+  let stateRendered = false;
 
   try {
     const data = await api(`/api/rooms/${session.roomCode}/spin`, {
@@ -545,17 +878,29 @@ ui.spinForm.addEventListener("submit", async (event) => {
         bet: Number(ui.bet.value),
       }),
     });
+    await animateSpinToResult(data.spin.columns);
     renderState(data.state);
+    stateRendered = true;
     renderSpin(data.spin);
+    if (data.spin.jackpotHit) {
+      triggerConfetti();
+      playJackpotSound();
+    }
   } catch (error) {
     ui.result.textContent = error.message;
   } finally {
     ui.reels.classList.remove("is-spinning");
-    ui.spinButton.disabled = false;
+    ui.cabinet.classList.remove("is-pulling");
+    if (!stateRendered) {
+      ui.spinButton.disabled = !session.roomCode || !session.playerId;
+    }
+    ui.leverButton.disabled = ui.spinButton.disabled;
   }
 });
 
 renderReels(initialColumns);
+renderFriends([]);
+ui.leverButton.disabled = ui.spinButton.disabled;
 if (session.saveCode) {
   ui.saveCodeValue.textContent = session.saveCode;
   ui.resumeCode.value = session.saveCode;

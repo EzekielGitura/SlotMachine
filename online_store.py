@@ -23,6 +23,7 @@ FIRST_AWAY_REWARD_COINS = 25000
 FIRST_AWAY_REWARD_FREE_SPINS = 7
 RETURN_AWAY_REWARD_COINS = 250
 RETURN_AWAY_REWARD_FREE_SPINS = 2
+FRIEND_CODE_LENGTH = 8
 
 RANK_GIFTS = {
     1: {"name": "Ruby Crown", "description": "Top table aura", "accent": "ruby"},
@@ -103,6 +104,11 @@ def make_save_code():
     )
 
 
+def make_friend_code():
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(FRIEND_CODE_LENGTH))
+
+
 def make_room_code(existing):
     alphabet = string.ascii_uppercase + string.digits
     while True:
@@ -134,6 +140,7 @@ class MemoryBackend:
         self.profiles = {}
         self.rooms = {}
         self.save_codes = {}
+        self.friend_codes = {}
 
     def get_profile(self, player_id):
         profile = self.profiles.get(player_id)
@@ -143,9 +150,15 @@ class MemoryBackend:
         self.profiles[profile["id"]] = deepcopy(profile)
         if profile.get("save_code"):
             self.save_codes[profile["save_code"].upper()] = profile["id"]
+        if profile.get("friend_code"):
+            self.friend_codes[profile["friend_code"].upper()] = profile["id"]
 
     def get_profile_by_save_code(self, save_code):
         player_id = self.save_codes.get(save_code.upper())
+        return self.get_profile(player_id) if player_id else None
+
+    def get_profile_by_friend_code(self, friend_code):
+        player_id = self.friend_codes.get(friend_code.upper())
         return self.get_profile(player_id) if player_id else None
 
     def list_profiles(self):
@@ -178,6 +191,9 @@ class RedisBackend:
     def save_code_key(self, save_code):
         return f"slot:savecode:{save_code.upper()}"
 
+    def friend_code_key(self, friend_code):
+        return f"slot:friendcode:{friend_code.upper()}"
+
     def room_key(self, code):
         return f"slot:room:{code.upper()}"
 
@@ -192,6 +208,8 @@ class RedisBackend:
         pipe.set(self.profile_key(player_id), payload)
         if profile.get("save_code"):
             pipe.set(self.save_code_key(profile["save_code"]), player_id)
+        if profile.get("friend_code"):
+            pipe.set(self.friend_code_key(profile["friend_code"]), player_id)
         pipe.sadd("slot:profiles", player_id)
         pipe.zadd("slot:leaderboard:coins", {player_id: profile["balance"]})
         pipe.zadd("slot:leaderboard:league", {player_id: profile["league_points"]})
@@ -199,6 +217,10 @@ class RedisBackend:
 
     def get_profile_by_save_code(self, save_code):
         player_id = self.redis.get(self.save_code_key(save_code))
+        return self.get_profile(player_id) if player_id else None
+
+    def get_profile_by_friend_code(self, friend_code):
+        player_id = self.redis.get(self.friend_code_key(friend_code))
         return self.get_profile(player_id) if player_id else None
 
     def list_profiles(self):
@@ -262,12 +284,14 @@ class OnlineStore:
         profile = {
             "id": player_id,
             "save_code": self.generate_save_code(),
+            "friend_code": self.generate_friend_code(),
             "name": self.clean_name(name),
             "balance": STARTING_COINS,
             "free_spins": 0,
             "stats": asdict(GameStats()),
             "history": [],
             "achievements": [],
+            "friends": [],
             "daily_claimed": None,
             "league_points": 0,
             "wins": 0,
@@ -291,6 +315,13 @@ class OnlineStore:
             if not self.backend.get_profile_by_save_code(save_code):
                 return save_code
         return make_id().upper()
+
+    def generate_friend_code(self):
+        for _ in range(20):
+            friend_code = make_friend_code()
+            if not self.backend.get_profile_by_friend_code(friend_code):
+                return friend_code
+        return make_id().replace("-", "").upper()[:FRIEND_CODE_LENGTH]
 
     def ensure_profile(self, player_id=None, name="Player"):
         if player_id:
@@ -373,6 +404,7 @@ class OnlineStore:
                 "created_at": iso_now(),
                 "completed_at": None,
                 "events": [],
+                "chat": [],
             }
             self.join_room_data(room, profile)
             self.backend.save_room(room)
@@ -565,6 +597,58 @@ class OnlineStore:
                 ),
             }
 
+    def add_chat_message(self, code, player_id, message, kind="text"):
+        with self.lock:
+            room = self.require_room(code)
+            if player_id not in room["players"]:
+                raise ValueError("Only room players can chat here.")
+
+            profile = self.require_profile(player_id)
+            self.normalize_profile(profile)
+            clean_message = self.clean_chat_message(message)
+            clean_kind = "emoji" if kind == "emoji" else "text"
+            chat_message = {
+                "id": make_id(),
+                "playerName": profile["name"],
+                "message": clean_message,
+                "kind": clean_kind,
+                "time": iso_now(),
+            }
+            room.setdefault("chat", []).append(chat_message)
+            room["chat"] = room["chat"][-50:]
+            self.backend.save_room(room)
+            return self.room_state(room["code"], player_id)
+
+    def add_friend(self, player_id, friend_code):
+        with self.lock:
+            profile = self.require_profile(player_id)
+            self.normalize_profile(profile)
+            friend = self.backend.get_profile_by_friend_code(
+                self.clean_friend_code(friend_code)
+            )
+            if not friend:
+                raise ValueError("Friend code not found.")
+
+            self.normalize_profile(friend)
+            if friend["id"] == profile["id"]:
+                raise ValueError("You cannot add yourself as a friend.")
+
+            if friend["id"] not in profile["friends"]:
+                profile["friends"].append(friend["id"])
+            if profile["id"] not in friend["friends"]:
+                friend["friends"].append(profile["id"])
+
+            profile["last_seen_at"] = iso_now()
+            profile["updated_at"] = iso_now()
+            friend["updated_at"] = iso_now()
+            self.backend.save_profile(profile)
+            self.backend.save_profile(friend)
+            return self.profile_state(
+                profile,
+                include_save_code=True,
+                include_player_id=True,
+            )
+
     def room_state(self, code, viewer_id=None):
         room = self.require_room(code)
         players = []
@@ -606,6 +690,7 @@ class OnlineStore:
             "leagues": LEAGUES,
             "achievements": list(ACHIEVEMENTS.values()),
             "events": list(reversed(room["events"])),
+            "chat": list(room.get("chat", []))[-50:],
             "config": {
                 "startingCoins": STARTING_COINS,
                 "awayRewardDays": AWAY_REWARD_DAYS,
@@ -665,9 +750,30 @@ class OnlineStore:
         }
         if include_player_id:
             state["id"] = profile["id"]
+            state["friendCode"] = profile["friend_code"]
+            state["friends"] = self.friends_for_profile(profile)
         if include_save_code:
             state["saveCode"] = profile["save_code"]
         return state
+
+    def friends_for_profile(self, profile):
+        friends = []
+        for friend_id in profile.get("friends", [])[:50]:
+            friend = self.backend.get_profile(friend_id)
+            if not friend:
+                continue
+            self.normalize_profile(friend)
+            friends.append(
+                {
+                    "name": friend["name"],
+                    "friendCode": friend["friend_code"],
+                    "league": league_for(friend["league_points"]),
+                    "leaguePoints": friend["league_points"],
+                    "balance": friend["balance"],
+                    "currentRoomCode": friend.get("current_room_code"),
+                }
+            )
+        return friends
 
     def public_room_state(self, room):
         return {
@@ -683,6 +789,13 @@ class OnlineStore:
                 if player not in room["forfeited"]
             ]),
         }
+
+    @staticmethod
+    def clean_chat_message(message):
+        message = " ".join(str(message or "").strip().split())
+        if not message:
+            raise ValueError("Chat message cannot be empty.")
+        return message[:180]
 
     def global_leaderboard(self, limit=10):
         profiles = self.backend.list_profiles()
@@ -744,9 +857,11 @@ class OnlineStore:
             "awayDays": away_time.days,
         }
 
-    @staticmethod
-    def normalize_profile(profile):
-        profile.setdefault("save_code", make_save_code())
+    def normalize_profile(self, profile):
+        if not profile.get("save_code"):
+            profile["save_code"] = self.generate_save_code()
+        if not profile.get("friend_code"):
+            profile["friend_code"] = self.generate_friend_code()
         profile.setdefault("paused", False)
         profile.setdefault("current_room_code", None)
         profile.setdefault("last_seen_at", profile.get("updated_at") or iso_now())
@@ -756,6 +871,7 @@ class OnlineStore:
         profile.setdefault("free_spins", 0)
         profile.setdefault("history", [])
         profile.setdefault("achievements", [])
+        profile.setdefault("friends", [])
         profile.setdefault("daily_claimed", None)
         profile.setdefault("league_points", 0)
         profile.setdefault("wins", 0)
@@ -804,6 +920,10 @@ class OnlineStore:
     @staticmethod
     def clean_save_code(save_code):
         return str(save_code or "").strip().upper()
+
+    @staticmethod
+    def clean_friend_code(friend_code):
+        return str(friend_code or "").strip().upper()
 
     @staticmethod
     def validate_stake(stake):

@@ -247,6 +247,35 @@ class SlotMachineTests(unittest.TestCase):
         self.assertEqual(state["players"][4]["gift"]["name"], RANK_GIFTS[5]["name"])
         self.assertIsNone(state["players"][5]["gift"])
 
+    def test_room_chat_messages_are_saved_for_room_players(self):
+        store = OnlineStore(backend=MemoryBackend())
+        code, ada_id, _ = store.create_room("Ada", stake=500)
+        store.join_room(code, "Ben")
+
+        state = store.add_chat_message(code, ada_id, "  good luck <all>  ")
+
+        self.assertEqual(state["chat"][-1]["playerName"], "Ada")
+        self.assertEqual(state["chat"][-1]["message"], "good luck <all>")
+        self.assertEqual(state["chat"][-1]["kind"], "text")
+        with self.assertRaises(ValueError):
+            store.add_chat_message(code, "missing-player", "hello")
+
+    def test_players_can_add_friends_by_public_friend_code(self):
+        store = OnlineStore(backend=MemoryBackend())
+        ada = store.create_profile("Ada")
+        ben = store.create_profile("Ben")
+
+        ada_state = store.add_friend(ada["id"], ben["friend_code"])
+        ben_state = store.profile_state(
+            store.require_profile(ben["id"]),
+            include_player_id=True,
+            include_save_code=True,
+        )
+
+        self.assertEqual(ada_state["friends"][0]["name"], "Ben")
+        self.assertEqual(ben_state["friends"][0]["name"], "Ada")
+        self.assertNotEqual(ada_state["friendCode"], ada_state["saveCode"])
+
 
 if __name__ == "__main__":
     unittest.main()

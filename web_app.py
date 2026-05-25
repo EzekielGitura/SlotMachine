@@ -92,6 +92,14 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
                 self.handle_finish_room(parts[2])
                 return
 
+            if len(parts) == 4 and parts[:2] == ["api", "rooms"] and parts[3] == "chat":
+                self.handle_room_chat(parts[2])
+                return
+
+            if path == "/api/friends/add":
+                self.handle_add_friend()
+                return
+
             if path == "/api/rewards/daily":
                 self.handle_daily_reward()
                 return
@@ -148,6 +156,21 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
         player_id = str(data.get("playerId", ""))
         state = STORE.finish_room(code, player_id)
         self.send_json(200, {"state": state})
+
+    def handle_room_chat(self, code):
+        data = self.read_json()
+        player_id = str(data.get("playerId", "")).strip()
+        message = str(data.get("message", ""))
+        kind = str(data.get("kind", "text"))
+        state = STORE.add_chat_message(code, player_id, message, kind)
+        self.send_json(200, {"state": state})
+
+    def handle_add_friend(self):
+        data = self.read_json()
+        player_id = str(data.get("playerId", "")).strip()
+        friend_code = str(data.get("friendCode", "")).strip()
+        profile = STORE.add_friend(player_id, friend_code)
+        self.send_json(200, {"profile": profile})
 
     def handle_daily_reward(self):
         data = self.read_json()
