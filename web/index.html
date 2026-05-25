@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Slot Room</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Slot Room</h1>
+          <p id="player-summary">No active room</p>
+        </div>
+        <div class="room-badge">
+          <span>Room</span>
+          <strong id="room-code">------</strong>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="play-surface">
+          <div class="room-controls">
+            <form id="create-form" class="control-group">
+              <label>
+                Name
+                <input id="create-name" type="text" maxlength="24" value="Player">
+              </label>
+              <label>
+                Stake
+                <input id="create-stake" type="number" min="100" max="5000" value="500">
+              </label>
+              <button type="submit">Create Room</button>
+            </form>
+
+            <form id="join-form" class="control-group">
+              <label>
+                Name
+                <input id="join-name" type="text" maxlength="24" value="Friend">
+              </label>
+              <label>
+                Code
+                <input id="join-code" type="text" maxlength="6" autocomplete="off">
+              </label>
+              <button type="submit">Join Room</button>
+            </form>
+          </div>
+
+          <div id="reels" class="reels" aria-live="polite"></div>
+
+          <form id="spin-form" class="spin-controls">
+            <label>
+              Lines
+              <input id="lines" type="number" min="1" max="5" value="5">
+            </label>
+            <label>
+              Bet
+              <input id="bet" type="number" min="1" max="100" value="10">
+            </label>
+            <button id="spin-button" type="submit" disabled>Spin</button>
+          </form>
+
+          <div class="room-actions">
+            <button id="daily-button" type="button" disabled>Claim Daily</button>
+            <button id="leave-button" type="button" disabled>Leave Room</button>
+            <button id="finish-button" type="button" disabled>End Room</button>
+          </div>
+
+          <div id="result-strip" class="result-strip">Ready</div>
+        </section>
+
+        <aside class="side-panel">
+          <section>
+            <h2>Leaderboard</h2>
+            <div id="leaderboard" class="leaderboard"></div>
+          </section>
+
+          <section>
+            <h2>Rank Gifts</h2>
+            <div id="rank-gifts" class="rank-gifts"></div>
+          </section>
+
+          <section>
+            <h2>Stats</h2>
+            <dl id="stats" class="stats-grid"></dl>
+          </section>
+
+          <section>
+            <h2>Room Feed</h2>
+            <ol id="events" class="events"></ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
