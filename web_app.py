@@ -55,6 +55,10 @@ class SlotRequestHandler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
 
         try:
+            if path == "/health":
+                self.send_json(200, {"status": "ok", "store": STORE.backend_name})
+                return
+
             if len(parts) == 4 and parts[:2] == ["api", "rooms"] and parts[3] == "state":
                 self.handle_room_state(parts[2])
                 return

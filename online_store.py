@@ -198,8 +198,12 @@ class OnlineStore:
             try:
                 return RedisBackend(redis_url)
             except RuntimeError:
-                raise
+                if os.getenv("SLOT_REQUIRE_REDIS") == "1":
+                    raise
+                print("Redis client is not installed, using memory store. Run `python -m pip install -r requirements.txt` to enable Redis.")
             except Exception as error:
+                if os.getenv("SLOT_REQUIRE_REDIS") == "1":
+                    raise
                 print(f"Redis unavailable, using memory store: {error}")
         return MemoryBackend()
 

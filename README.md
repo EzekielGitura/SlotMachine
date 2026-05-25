@@ -90,6 +90,35 @@ http://127.0.0.1:8000
 
 Create a room, choose the room stake, share the six-character code, and friends can join the same staked room while the server is running.
 
+## Deploy on Render
+
+This repo includes `render.yaml`, which provisions:
+
+- `slot-machine-web`: the Python web service
+- `slot-machine-redis`: a Render Key Value instance used through `REDIS_URL`
+
+Render deploys from a pushed Git repository, so commit and push `render.yaml` before opening the Blueprint:
+
+```bash
+git add .
+git commit -m "Add Render deployment configuration"
+git push origin main
+```
+
+Then open:
+
+```text
+https://dashboard.render.com/blueprint/new?repo=https://github.com/EzekielGitura/SlotMachine
+```
+
+Review the resources and click **Apply**. The web service start command is:
+
+```bash
+python web_app.py --host 0.0.0.0 --port $PORT
+```
+
+Render will inject `REDIS_URL` from the Key Value service and the app will require Redis in production with `SLOT_REQUIRE_REDIS=1`.
+
 ## Test
 
 ```bash

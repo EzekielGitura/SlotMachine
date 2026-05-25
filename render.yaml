@@ -1,0 +1,24 @@
+services:
+  - type: keyvalue
+    name: slot-machine-redis
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+
+  - type: web
+    name: slot-machine-web
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+    startCommand: python web_app.py --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: slot-machine-redis
+          type: keyvalue
+          property: connectionString
+      - key: SLOT_REQUIRE_REDIS
+        value: "1"
