@@ -99,7 +99,7 @@ label {
 }
 
 .app-shell {
-  width: min(1180px, calc(100% - 28px));
+  width: min(1280px, calc(100% - 28px));
   margin: 0 auto;
   padding: 24px 0 32px;
 }
@@ -302,7 +302,7 @@ label {
 
 .reels {
   display: grid;
-  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   min-height: 344px;
   padding: 14px;
@@ -370,7 +370,7 @@ label {
     inset 0 -18px 32px rgba(42, 6, 16, 0.2),
     0 28px 54px rgba(42, 6, 16, 0.28);
   margin-top: 44px;
-  padding: 22px 78px 18px 22px;
+  padding: 22px 22px 18px;
   border: 2px solid #1d1515;
   border-radius: 8px;
   background:
@@ -405,9 +405,10 @@ label {
 }
 
 .cabinet-arch {
+  position: relative;
   display: grid;
   place-items: center;
-  min-height: 72px;
+  min-height: 76px;
   margin: -14px 24px 0;
   border: 2px solid #1d1515;
   border-bottom: 0;
@@ -415,24 +416,40 @@ label {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent),
     linear-gradient(180deg, #c59a5c, #80552f);
+  overflow: hidden;
 }
 
-.cabinet-arch span {
-  display: inline-grid;
-  place-items: center;
-  min-width: 180px;
-  min-height: 34px;
-  border: 2px solid var(--burgundy-950);
-  border-radius: 8px;
-  background: linear-gradient(180deg, var(--burgundy-700), var(--burgundy-950));
-  color: #fff8ee;
-  font-weight: 900;
-  text-transform: uppercase;
+.cabinet-arch::before,
+.cabinet-arch::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.cabinet-arch::before {
+  inset: 12px 9% 0;
+  border: 1px solid rgba(42, 6, 16, 0.55);
+  border-bottom: 0;
+  border-radius: 98px 98px 0 0;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 243, 0.24), transparent 28%, transparent 72%, rgba(42, 6, 16, 0.18)),
+    repeating-linear-gradient(112deg, rgba(42, 6, 16, 0.07) 0 2px, transparent 2px 12px);
+}
+
+.cabinet-arch::after {
+  left: 22%;
+  right: 22%;
+  bottom: 14px;
+  height: 10px;
+  border: 1px solid rgba(42, 6, 16, 0.72);
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--burgundy-900), var(--ruby-500), var(--burgundy-900));
+  box-shadow: 0 4px 12px rgba(42, 6, 16, 0.22);
 }
 
 .cabinet-window {
   position: relative;
-  padding: 12px;
+  padding: 13px 88px 13px 13px;
   border: 7px solid #182224;
   border-radius: 8px;
   background: linear-gradient(180deg, #0e1719, #1d1515);
@@ -441,8 +458,54 @@ label {
     0 18px 28px rgba(42, 6, 16, 0.24);
 }
 
+.reel-stage {
+  position: relative;
+  min-width: 0;
+}
+
+.payline-overlay {
+  position: absolute;
+  inset: 18px;
+  z-index: 5;
+  width: calc(100% - 36px);
+  height: calc(100% - 36px);
+  pointer-events: none;
+  opacity: 0.32;
+  filter: drop-shadow(0 1px 2px rgba(42, 6, 16, 0.2));
+  mix-blend-mode: multiply;
+}
+
+.payline {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 12 14;
+  vector-effect: non-scaling-stroke;
+}
+
+.payline-top,
+.payline-bottom {
+  stroke: var(--ruby-500);
+}
+
+.payline-middle {
+  stroke: var(--gold-500);
+  opacity: 0.96;
+}
+
+.payline-down,
+.payline-up {
+  stroke: var(--teal-500);
+  stroke-dasharray: 7 12;
+}
+
+.reels.is-spinning + .payline-overlay {
+  opacity: 0.14;
+}
+
 .reels {
   min-height: 382px;
+  gap: 14px;
   padding: 10px;
   border: 0;
   border-radius: 7px;
@@ -513,20 +576,22 @@ label {
 
 .lever {
   position: absolute;
-  top: 42px;
-  right: 12px;
+  top: 50%;
+  right: 18px;
   display: block;
-  width: 54px;
-  height: 190px;
+  width: 50px;
+  height: 184px;
   border: 0;
   background: transparent;
   box-shadow: none;
+  z-index: 6;
+  transform: translateY(-50%);
   transform-origin: 50% 86%;
   transition: transform 420ms cubic-bezier(.2, .82, .2, 1);
 }
 
 .lever:hover:not(:disabled) {
-  transform: translateY(0);
+  transform: translateY(-50%);
   box-shadow: none;
 }
 
@@ -534,9 +599,24 @@ label {
   opacity: 0.64;
 }
 
+.lever::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 42px;
+  width: 24px;
+  height: 118px;
+  border: 1px solid rgba(29, 21, 21, 0.82);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 243, 0.36), transparent 34%, rgba(42, 6, 16, 0.18)),
+    linear-gradient(180deg, #f2d59e, #b48149);
+  box-shadow: inset 0 0 8px rgba(42, 6, 16, 0.28);
+}
+
 .lever-stick {
   position: absolute;
-  left: 23px;
+  left: 21px;
   top: 32px;
   width: 8px;
   height: 132px;
@@ -544,11 +624,12 @@ label {
   border-radius: 8px;
   background: linear-gradient(90deg, #8c6235, #f5d18a, #6f4426);
   box-shadow: 0 8px 16px rgba(42, 6, 16, 0.2);
+  z-index: 1;
 }
 
 .lever-knob {
   position: absolute;
-  left: 5px;
+  left: 3px;
   top: 0;
   width: 44px;
   height: 44px;
@@ -558,10 +639,11 @@ label {
     radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.55), transparent 28%),
     linear-gradient(180deg, #ff4f58, var(--ruby-500) 52%, var(--burgundy-800));
   box-shadow: 0 8px 18px rgba(42, 6, 16, 0.28);
+  z-index: 2;
 }
 
 .slot-cabinet.is-pulling .lever {
-  transform: rotate(31deg) translateY(22px);
+  transform: translateY(-50%) rotate(31deg) translateY(22px);
 }
 
 .cabinet-base {
@@ -1021,7 +1103,7 @@ label {
 
 @media (max-width: 720px) {
   .app-shell {
-    width: min(100% - 18px, 1180px);
+    width: min(100% - 18px, 1280px);
     padding-top: 12px;
   }
 
@@ -1071,7 +1153,7 @@ label {
 
   .slot-cabinet {
     margin-top: 34px;
-    padding: 18px 54px 14px 14px;
+    padding: 18px 14px 14px;
   }
 
   .cabinet-beacon {
@@ -1085,20 +1167,45 @@ label {
     margin: -12px 10px 0;
   }
 
-  .cabinet-arch span {
-    min-width: 136px;
+  .cabinet-arch::after {
+    left: 24%;
+    right: 24%;
+    bottom: 10px;
+  }
+
+  .cabinet-window {
+    padding: 10px 56px 10px 10px;
+    border-width: 5px;
+  }
+
+  .payline-overlay {
+    inset: 14px;
+    width: calc(100% - 28px);
+    height: calc(100% - 28px);
+    opacity: 0.24;
+  }
+
+  .payline {
+    stroke-width: 4;
   }
 
   .lever {
-    top: 68px;
-    right: 7px;
+    top: 50%;
+    right: 5px;
     width: 44px;
     height: 146px;
-    transform: scale(0.84);
+    transform: translateY(-50%) scale(0.84);
   }
 
   .lever:hover:not(:disabled) {
-    transform: scale(0.84);
+    transform: translateY(-50%) scale(0.84);
+  }
+
+  .lever::before {
+    left: 11px;
+    top: 38px;
+    width: 22px;
+    height: 90px;
   }
 
   .lever-stick {
@@ -1115,7 +1222,7 @@ label {
   }
 
   .slot-cabinet.is-pulling .lever {
-    transform: scale(0.84) rotate(31deg) translateY(18px);
+    transform: translateY(-50%) scale(0.84) rotate(31deg) translateY(18px);
   }
 
   .cabinet-base {
@@ -1168,7 +1275,7 @@ label {
 
 @media (max-width: 420px) {
   .app-shell {
-    width: min(100% - 12px, 1180px);
+    width: min(100% - 12px, 1280px);
   }
 
   .topbar h1 {
@@ -1181,6 +1288,23 @@ label {
 
   .reels {
     min-height: 246px;
+  }
+
+  .cabinet-window {
+    padding: 8px 48px 8px 8px;
+  }
+
+  .lever {
+    right: 1px;
+    transform: translateY(-50%) scale(0.74);
+  }
+
+  .lever:hover:not(:disabled) {
+    transform: translateY(-50%) scale(0.74);
+  }
+
+  .slot-cabinet.is-pulling .lever {
+    transform: translateY(-50%) scale(0.74) rotate(31deg) translateY(18px);
   }
 
   .reel-cell {

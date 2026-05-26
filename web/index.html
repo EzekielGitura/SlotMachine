@@ -95,11 +95,18 @@
 
           <div class="slot-cabinet" id="slot-cabinet">
             <div class="cabinet-beacon" aria-hidden="true"></div>
-            <div class="cabinet-arch">
-              <span>Lucky Room</span>
-            </div>
+            <div class="cabinet-arch" aria-hidden="true"></div>
             <div class="cabinet-window">
-              <div id="reels" class="reels" aria-live="polite"></div>
+              <div class="reel-stage">
+                <div id="reels" class="reels" aria-live="polite"></div>
+                <svg class="payline-overlay" viewBox="0 0 300 300" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                  <path class="payline payline-top" d="M16 55 H284"></path>
+                  <path class="payline payline-middle" d="M16 150 H284"></path>
+                  <path class="payline payline-bottom" d="M16 245 H284"></path>
+                  <path class="payline payline-down" d="M16 55 L150 150 L284 245"></path>
+                  <path class="payline payline-up" d="M16 245 L150 150 L284 55"></path>
+                </svg>
+              </div>
               <button id="lever-button" class="lever" type="button" aria-label="Pull lever to spin">
                 <span class="lever-knob"></span>
                 <span class="lever-stick"></span>
